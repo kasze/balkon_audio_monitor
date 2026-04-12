@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}{{ category_label }}{% endblock %}
+{% block content %}
+  <section class="card">
+    <p class="label">Kategoria</p>
+    <h2>{{ category_label }}</h2>
+    <p>Dzien: {{ day }}</p>
+  </section>
+
+  <section class="card">
+    <h3>Zdarzenia w tej kategorii</h3>
+    {% if events %}
+      <table class="events-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Start</th>
+            <th>Kategoria</th>
+            <th>Czas</th>
+            <th>Pik</th>
+            <th>Pewnosc</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in events %}
+            <tr>
+              <td><a href="{{ url_for('event_details', event_id=row.id) }}">#{{ row.id }}</a></td>
+              <td>{{ row.started_at }}</td>
+              <td><a href="{{ url_for('category_events', category=row.category) }}">{{ category_labels.get(row.category, row.category) }}</a></td>
+              <td>{{ '%.1f'|format(row.duration_seconds) }} s</td>
+              <td>{{ '%.1f'|format(row.peak_dbfs) }} dBFS</td>
+              <td>{{ '%.2f'|format(row.confidence) }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p>Brak zdarzen w tej kategorii dla biezacej doby.</p>
+    {% endif %}
+  </section>
+{% endblock %}

@@ -55,7 +55,7 @@
         <ul class="plain-list">
           {% for row in dashboard.categories %}
             <li>
-              <span>{{ category_labels.get(row.category, row.category) }}</span>
+              <span><a href="{{ url_for('category_events', category=row.category) }}">{{ category_labels.get(row.category, row.category) }}</a></span>
               <strong>{{ row.total }}</strong>
             </li>
           {% endfor %}
@@ -85,7 +85,7 @@
             <tr>
               <td><a href="{{ url_for('event_details', event_id=row.id) }}">#{{ row.id }}</a></td>
               <td>{{ row.started_at }}</td>
-              <td>{{ category_labels.get(row.category, row.category) }}</td>
+              <td><a href="{{ url_for('category_events', category=row.category) }}">{{ category_labels.get(row.category, row.category) }}</a></td>
               <td>{{ '%.1f'|format(row.duration_seconds) }} s</td>
               <td>{{ '%.1f'|format(row.peak_dbfs) }} dBFS</td>
               <td>{{ '%.2f'|format(row.confidence) }}</td>
@@ -98,4 +98,3 @@
     {% endif %}
   </section>
 {% endblock %}
-

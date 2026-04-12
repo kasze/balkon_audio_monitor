@@ -307,6 +307,34 @@ class SQLiteRepository:
             "recent_events": [dict(row) for row in recent],
         }
 
+    def list_events(
+        self,
+        *,
+        category: str | None = None,
+        day: str | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        query = """
+            SELECT id, started_at, ended_at, duration_seconds, category, confidence, peak_dbfs
+            FROM events
+        """
+        conditions: list[str] = []
+        params: list[Any] = []
+        if category:
+            conditions.append("category = ?")
+            params.append(category)
+        if day:
+            conditions.append("substr(started_at, 1, 10) = ?")
+            params.append(day)
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+        query += " ORDER BY started_at DESC LIMIT ?"
+        params.append(limit)
+
+        with closing(self._connect()) as connection:
+            rows = connection.execute(query, tuple(params)).fetchall()
+        return [dict(row) for row in rows]
+
     def get_event(self, event_id: int) -> dict[str, Any] | None:
         with closing(self._connect()) as connection:
             row = connection.execute(

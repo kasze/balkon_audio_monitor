@@ -45,6 +45,20 @@ def create_app(repository: SQLiteRepository, status: RuntimeStatus, config: AppC
             abort(404)
         return render_template("event.html", event=event)
 
+    @app.get("/categories/<category>")
+    def category_events(category: str):
+        if category not in CATEGORY_LABELS:
+            abort(404)
+        today = datetime.now().astimezone().strftime("%Y-%m-%d")
+        events = repository.list_events(category=category, day=today, limit=200)
+        return render_template(
+            "category.html",
+            category=category,
+            category_label=CATEGORY_LABELS.get(category, category),
+            day=today,
+            events=events,
+        )
+
     @app.get("/clips/<int:event_id>")
     def clip_audio(event_id: int):
         event = repository.get_event(event_id)
