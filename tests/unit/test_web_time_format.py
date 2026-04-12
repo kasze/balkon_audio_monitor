@@ -14,11 +14,12 @@ from app.web.app import (
     _describe_classifier_decision,
     _format_dbfs,
     _format_local_timestamp,
-    _format_uptime,
+    _format_uptime_seconds,
     _read_cpu_load_percent,
     _read_cpu_temperature_c,
     _read_disk_free_gb,
     _read_memory_available_gb,
+    _read_system_uptime_seconds,
     _read_system_status,
     _translate_classifier_name,
     _translate_label,
@@ -58,19 +59,8 @@ def test_format_dbfs_normalizes_negative_zero() -> None:
     assert _format_dbfs(-12.34) == "-12.3 dBFS"
 
 
-def test_format_uptime_returns_human_readable_duration(
-    warsaw_timezone: None,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    class FrozenDateTime(datetime):
-        @classmethod
-        def now(cls, tz=None):
-            current = cls.fromisoformat("2026-04-12T23:01:00+02:00")
-            return current.astimezone(tz) if tz is not None else current
-
-    monkeypatch.setattr("app.web.app.datetime", FrozenDateTime)
-
-    assert _format_uptime("2026-04-10T09:40:00+02:00") == "2d 13h 21m"
+def test_format_uptime_returns_human_readable_duration() -> None:
+    assert _format_uptime_seconds(220_860) == "2d 13h 21m"
 
 
 def test_describe_classifier_decision_marks_cache_reuse() -> None:
@@ -127,6 +117,12 @@ def test_read_cpu_load_percent(monkeypatch: pytest.MonkeyPatch) -> None:
     assert _read_cpu_load_percent() == 37.5
 
 
+def test_read_system_uptime_seconds(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("app.web.app.Path.read_text", lambda self, encoding="utf-8": "220860.42 99999.00\n")
+
+    assert _read_system_uptime_seconds() == 220860.42
+
+
 def test_read_cpu_temperature_from_sysfs(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("app.web.app.Path.exists", lambda self: True)
     monkeypatch.setattr("app.web.app.Path.read_text", lambda self, encoding="utf-8": "48678\n")
@@ -160,7 +156,13 @@ def test_read_memory_and_disk_and_compose_system_status(
     monkeypatch.setattr("app.web.app.Path.exists", lambda self: True)
     monkeypatch.setattr(
         "app.web.app.Path.read_text",
-        lambda self, encoding="utf-8": "52000\n" if str(self) == "/sys/class/thermal/thermal_zone0/temp" else meminfo,
+        lambda self, encoding="utf-8": (
+            "220860.42 99999.00\n"
+            if str(self) == "/proc/uptime"
+            else "52000\n"
+            if str(self) == "/sys/class/thermal/thermal_zone0/temp"
+            else meminfo
+        ),
     )
 
     config = AppConfig(
@@ -171,6 +173,7 @@ def test_read_memory_and_disk_and_compose_system_status(
 
     assert _read_memory_available_gb() == 1.0
     assert _read_disk_free_gb(tmp_path) == 7.0
+    assert status["uptime_seconds"] == 220860.42
     assert status["cpu_percent"] == 25.0
     assert status["cpu_temperature_c"] == 52.0
     assert status["memory_available_gb"] == 1.0

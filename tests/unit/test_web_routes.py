@@ -188,7 +188,6 @@ def test_health_includes_human_uptime(tmp_path: Path) -> None:
     repository = SQLiteRepository(tmp_path / "audio_monitor.sqlite3")
     repository.initialize()
     status = RuntimeStatus()
-    status.update(started_at="2026-04-10T09:40:00+02:00")
 
     app = create_app(
         repository,
@@ -199,22 +198,60 @@ def test_health_includes_human_uptime(tmp_path: Path) -> None:
         ),
     )
     client = app.test_client()
-
-    from app.web import app as web_app_module
-
-    class FrozenDateTime(datetime):
-        @classmethod
-        def now(cls, tz=None):
-            current = cls.fromisoformat("2026-04-12T23:01:00+02:00")
-            return current.astimezone(tz) if tz is not None else current
-
-    original_datetime = web_app_module.datetime
-    web_app_module.datetime = FrozenDateTime
-    try:
-        response = client.get("/health")
-    finally:
-        web_app_module.datetime = original_datetime
+    response = client.get("/health")
 
     assert response.status_code == 200
     payload = response.get_json()
-    assert payload["uptime_human"] == "2d 13h 21m"
+    assert "system_uptime_human" in payload
+
+
+def test_birds_page_and_dashboard_show_recent_bird_species(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "audio_monitor.sqlite3")
+    repository.initialize()
+    now = datetime.now().astimezone().replace(microsecond=0)
+
+    repository.insert_event(
+        _build_event("Bird vocalization, bird call, bird song", now),
+        ClassifierDecision(
+            "birdnet_remote",
+            "1",
+            "Bogatka",
+            0.88,
+            {
+                "used_external_api": True,
+                "external_api_name": "BirdNET API",
+                "birdnet_common_name": "Bogatka",
+                "birdnet_scientific_name": "Parus major",
+            },
+        ),
+        None,
+    )
+    repository.insert_event(
+        _build_event("street_background", now - timedelta(minutes=5)),
+        ClassifierDecision("yamnet_litert", "1", "street_background", 0.7, {}),
+        None,
+    )
+
+    app = create_app(
+        repository,
+        RuntimeStatus(),
+        AppConfig(
+            base_dir=tmp_path,
+            storage=StorageConfig(database_path=repository.database_path, clip_dir=tmp_path / "clips"),
+        ),
+    )
+    client = app.test_client()
+
+    dashboard_response = client.get("/")
+    assert dashboard_response.status_code == 200
+    dashboard_html = dashboard_response.get_data(as_text=True)
+    assert 'href="/birds"' in dashboard_html
+    assert "Bogatka" in dashboard_html
+
+    birds_response = client.get("/birds")
+    assert birds_response.status_code == 200
+    birds_html = birds_response.get_data(as_text=True)
+    assert "Ostatnio rozpoznane gatunki" in birds_html
+    assert "Bogatka" in birds_html
+    assert "/events/1" in birds_html
+    assert "street_background" not in birds_html

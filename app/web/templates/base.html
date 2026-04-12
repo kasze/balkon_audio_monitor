@@ -17,7 +17,7 @@
           {{ status.worker_state if status and status.worker_state else 'idle' }}
         </span>
         <div class="status-metrics">
-          <p><strong>Uptime</strong> {{ format_uptime(status.started_at if status else none) }}</p>
+          <p><strong>Uptime systemu</strong> {{ format_uptime_seconds(system_status.uptime_seconds) }}</p>
           <p><strong>Audio</strong> {{ 'OK' if status and status.audio_available else 'brak sygnału' }}</p>
           <p><strong>CPU</strong> {{ ('%.1f'|format(system_status.cpu_percent) ~ '%') if system_status.cpu_percent is not none else 'brak danych' }}</p>
           <p><strong>Temp CPU</strong> {{ ('%.1f'|format(system_status.cpu_temperature_c) ~ ' C') if system_status.cpu_temperature_c is not none else 'brak danych' }}</p>

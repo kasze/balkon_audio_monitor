@@ -79,7 +79,7 @@ def create_app(repository: SQLiteRepository, status: RuntimeStatus, config: AppC
             "describe_classifier_decision": _describe_classifier_decision,
             "format_dbfs": _format_dbfs,
             "format_local_timestamp": _format_local_timestamp,
-            "format_uptime": _format_uptime,
+            "format_uptime_seconds": _format_uptime_seconds,
             "manual_label_options": manual_label_options,
             "translate_label": _translate_label,
             "system_status": _read_system_status(config),
@@ -132,6 +132,16 @@ def create_app(repository: SQLiteRepository, status: RuntimeStatus, config: AppC
             events=events,
         )
 
+    @app.get("/birds")
+    def bird_events():
+        today = datetime.now().astimezone().strftime("%Y-%m-%d")
+        events = repository.list_bird_events(day=today, limit=200)
+        return render_template(
+            "birds.html",
+            day=today,
+            events=events,
+        )
+
     @app.get("/clips/<int:event_id>")
     def clip_audio(event_id: int):
         event = repository.get_event(event_id)
@@ -149,9 +159,10 @@ def create_app(repository: SQLiteRepository, status: RuntimeStatus, config: AppC
     @app.get("/health")
     def health():
         snapshot = status.snapshot()
-        snapshot["uptime_human"] = _format_uptime(snapshot.get("started_at"))
         snapshot["database_path"] = str(config.storage.database_path)
-        snapshot["system_status"] = _read_system_status(config)
+        system_status = _read_system_status(config)
+        snapshot["system_status"] = system_status
+        snapshot["system_uptime_human"] = _format_uptime_seconds(system_status.get("uptime_seconds"))
         return jsonify(snapshot)
 
     return app
@@ -190,15 +201,10 @@ def _format_local_timestamp(value: str | None) -> str:
     return f"{local_timestamp:%Y-%m-%d %H:%M:%S}.{hundredths:02d}"
 
 
-def _format_uptime(started_at_value: str | None) -> str:
-    if not started_at_value:
+def _format_uptime_seconds(value: float | int | None) -> str:
+    if value is None:
         return "brak"
-    try:
-        started_at = datetime.fromisoformat(started_at_value)
-    except ValueError:
-        return "brak"
-
-    total_seconds = max(int((datetime.now().astimezone() - started_at).total_seconds()), 0)
+    total_seconds = max(int(float(value)), 0)
     days, remainder = divmod(total_seconds, 86_400)
     hours, remainder = divmod(remainder, 3_600)
     minutes, _seconds = divmod(remainder, 60)
@@ -344,11 +350,21 @@ def _load_manual_label_options(class_map_path: Path) -> list[dict[str, str]]:
 
 def _read_system_status(config: AppConfig) -> dict[str, object]:
     return {
+        "uptime_seconds": _read_system_uptime_seconds(),
         "cpu_percent": _read_cpu_load_percent(),
         "cpu_temperature_c": _read_cpu_temperature_c(),
         "memory_available_gb": _read_memory_available_gb(),
         "disk_free_gb": _read_disk_free_gb(config.storage.database_path.parent),
     }
+
+
+def _read_system_uptime_seconds() -> float | None:
+    uptime_path = Path("/proc/uptime")
+    try:
+        raw_value = uptime_path.read_text(encoding="utf-8").split()[0]
+        return float(raw_value)
+    except (OSError, ValueError, IndexError):
+        return None
 
 
 def _read_cpu_load_percent() -> float | None:

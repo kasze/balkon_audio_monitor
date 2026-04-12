@@ -320,12 +320,40 @@ class SQLiteRepository:
                 ORDER BY started_at ASC
                 """
             ).fetchall()
+            bird_species = connection.execute(
+                """
+                SELECT e.id, e.started_at, e.ended_at, e.duration_seconds, d.category AS species,
+                       d.confidence, e.peak_dbfs
+                FROM events e
+                JOIN classifier_decisions d ON d.event_id = e.id
+                WHERE substr(e.started_at, 1, 10) = ?
+                  AND d.classifier_name = 'birdnet_remote'
+                ORDER BY e.started_at DESC
+                LIMIT ?
+                """,
+                (day, recent_limit),
+            ).fetchall()
+            bird_species_counts = connection.execute(
+                """
+                SELECT d.category AS species, COUNT(*) AS total
+                FROM events e
+                JOIN classifier_decisions d ON d.event_id = e.id
+                WHERE substr(e.started_at, 1, 10) = ?
+                  AND d.classifier_name = 'birdnet_remote'
+                GROUP BY d.category
+                ORDER BY total DESC, d.category ASC
+                LIMIT ?
+                """,
+                (day, recent_limit),
+            ).fetchall()
         return {
             "summary": dict(summary) if summary else {"event_count": 0, "avg_dbfs": None, "max_dbfs": None},
             "categories": [dict(row) for row in categories],
             "ten_minute": [dict(row) for row in ten_minute],
             "recent_noise": [dict(row) for row in recent_noise],
             "recent_events": [dict(row) for row in recent],
+            "bird_species": [dict(row) for row in bird_species],
+            "bird_species_counts": [dict(row) for row in bird_species_counts],
         }
 
     def list_events(
@@ -351,6 +379,30 @@ class SQLiteRepository:
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
         query += " ORDER BY started_at DESC LIMIT ?"
+        params.append(limit)
+
+        with closing(self._connect()) as connection:
+            rows = connection.execute(query, tuple(params)).fetchall()
+        return [dict(row) for row in rows]
+
+    def list_bird_events(
+        self,
+        *,
+        day: str | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        query = """
+            SELECT e.id, e.started_at, e.ended_at, e.duration_seconds,
+                   d.category AS species, d.confidence, e.peak_dbfs
+            FROM events e
+            JOIN classifier_decisions d ON d.event_id = e.id
+            WHERE d.classifier_name = 'birdnet_remote'
+        """
+        params: list[Any] = []
+        if day:
+            query += " AND substr(e.started_at, 1, 10) = ?"
+            params.append(day)
+        query += " ORDER BY e.started_at DESC LIMIT ?"
         params.append(limit)
 
         with closing(self._connect()) as connection:
