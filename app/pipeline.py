@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterable
+from datetime import datetime
 from threading import Event, Lock
 
 from app.aggregate.event_aggregator import EventAggregator
@@ -23,6 +24,7 @@ class RuntimeStatus:
         self._lock = Lock()
         self._data = {
             "worker_state": "idle",
+            "started_at": datetime.now().astimezone().isoformat(),
             "audio_available": False,
             "audio_device": None,
             "audio_device_mode": None,

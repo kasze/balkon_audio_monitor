@@ -182,3 +182,39 @@ def test_event_details_show_clip_duration_separately_from_event_duration(tmp_pat
     html = response.get_data(as_text=True)
     assert "Czas zdarzenia:</strong> 4.0 s" in html
     assert "Czas próbki audio:</strong> 4.0 s" in html
+
+
+def test_health_includes_human_uptime(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "audio_monitor.sqlite3")
+    repository.initialize()
+    status = RuntimeStatus()
+    status.update(started_at="2026-04-10T09:40:00+02:00")
+
+    app = create_app(
+        repository,
+        status,
+        AppConfig(
+            base_dir=tmp_path,
+            storage=StorageConfig(database_path=repository.database_path, clip_dir=tmp_path / "clips"),
+        ),
+    )
+    client = app.test_client()
+
+    from app.web import app as web_app_module
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            current = cls.fromisoformat("2026-04-12T23:01:00+02:00")
+            return current.astimezone(tz) if tz is not None else current
+
+    original_datetime = web_app_module.datetime
+    web_app_module.datetime = FrozenDateTime
+    try:
+        response = client.get("/health")
+    finally:
+        web_app_module.datetime = original_datetime
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["uptime_human"] == "2d 13h 21m"

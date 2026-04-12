@@ -79,6 +79,7 @@ def create_app(repository: SQLiteRepository, status: RuntimeStatus, config: AppC
             "describe_classifier_decision": _describe_classifier_decision,
             "format_dbfs": _format_dbfs,
             "format_local_timestamp": _format_local_timestamp,
+            "format_uptime": _format_uptime,
             "manual_label_options": manual_label_options,
             "translate_label": _translate_label,
             "system_status": _read_system_status(config),
@@ -148,6 +149,7 @@ def create_app(repository: SQLiteRepository, status: RuntimeStatus, config: AppC
     @app.get("/health")
     def health():
         snapshot = status.snapshot()
+        snapshot["uptime_human"] = _format_uptime(snapshot.get("started_at"))
         snapshot["database_path"] = str(config.storage.database_path)
         snapshot["system_status"] = _read_system_status(config)
         return jsonify(snapshot)
@@ -186,6 +188,28 @@ def _format_local_timestamp(value: str | None) -> str:
     local_timestamp = timestamp.astimezone()
     hundredths = local_timestamp.microsecond // 10_000
     return f"{local_timestamp:%Y-%m-%d %H:%M:%S}.{hundredths:02d}"
+
+
+def _format_uptime(started_at_value: str | None) -> str:
+    if not started_at_value:
+        return "brak"
+    try:
+        started_at = datetime.fromisoformat(started_at_value)
+    except ValueError:
+        return "brak"
+
+    total_seconds = max(int((datetime.now().astimezone() - started_at).total_seconds()), 0)
+    days, remainder = divmod(total_seconds, 86_400)
+    hours, remainder = divmod(remainder, 3_600)
+    minutes, _seconds = divmod(remainder, 60)
+
+    parts: list[str] = []
+    if days:
+        parts.append(f"{days}d")
+    if days or hours:
+        parts.append(f"{hours}h")
+    parts.append(f"{minutes}m")
+    return " ".join(parts)
 
 
 def _format_dbfs(value: float | int | None, decimals: int = 1) -> str:

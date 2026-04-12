@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import time
 from collections import namedtuple
+from datetime import datetime
 from pathlib import Path
 from subprocess import CompletedProcess
 
@@ -13,6 +14,7 @@ from app.web.app import (
     _describe_classifier_decision,
     _format_dbfs,
     _format_local_timestamp,
+    _format_uptime,
     _read_cpu_load_percent,
     _read_cpu_temperature_c,
     _read_disk_free_gb,
@@ -54,6 +56,21 @@ def test_format_dbfs_normalizes_negative_zero() -> None:
     assert _format_dbfs(-0.00003) == "0.0 dBFS"
     assert _format_dbfs(0.0) == "0.0 dBFS"
     assert _format_dbfs(-12.34) == "-12.3 dBFS"
+
+
+def test_format_uptime_returns_human_readable_duration(
+    warsaw_timezone: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            current = cls.fromisoformat("2026-04-12T23:01:00+02:00")
+            return current.astimezone(tz) if tz is not None else current
+
+    monkeypatch.setattr("app.web.app.datetime", FrozenDateTime)
+
+    assert _format_uptime("2026-04-10T09:40:00+02:00") == "2d 13h 21m"
 
 
 def test_describe_classifier_decision_marks_cache_reuse() -> None:
