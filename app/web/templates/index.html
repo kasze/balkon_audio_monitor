@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_chart_macros.html" import render_chart_card %}
 {% block title %}Dashboard{% endblock %}
 {% block content %}
   <section class="grid two">
@@ -26,49 +27,9 @@
     </article>
   </section>
 
-  <section class="card">
-    <h3>Ostatnia godzina hałasu</h3>
-    {% if recent_chart %}
-      <div class="chart-wrap">
-        <canvas
-          class="chart bam-chart"
-          data-labels='{{ recent_chart["labels"]|tojson }}'
-          data-values='{{ recent_chart["values"]|tojson }}'
-          data-min='{{ recent_chart["min_value"] }}'
-          data-max='{{ recent_chart["max_value"] }}'
-          aria-label="Wykres hałasu z ostatniej godziny"
-        ></canvas>
-        <div class="chart-legend">
-          <span>{{ recent_chart["max_value"] }} dBFS</span>
-          <span>{{ recent_chart["min_value"] }} dBFS</span>
-        </div>
-      </div>
-    {% else %}
-      <p>Brak danych z ostatniej godziny.</p>
-    {% endif %}
-  </section>
+  {{ render_chart_card("Ostatnia godzina hałasu", recent_chart, "Wykres hałasu z ostatniej godziny", "Brak danych z ostatniej godziny.") }}
 
-  <section class="card">
-    <h3>Wykres hałasu (średnia godzinowa)</h3>
-    {% if chart %}
-      <div class="chart-wrap">
-        <canvas
-          class="chart bam-chart"
-          data-labels='{{ chart["labels"]|tojson }}'
-          data-values='{{ chart["values"]|tojson }}'
-          data-min='{{ chart["min_value"] }}'
-          data-max='{{ chart["max_value"] }}'
-          aria-label="Wykres godzinowego hałasu"
-        ></canvas>
-        <div class="chart-legend">
-          <span>{{ chart["max_value"] }} dBFS</span>
-          <span>{{ chart["min_value"] }} dBFS</span>
-        </div>
-      </div>
-    {% else %}
-      <p>Brak danych godzinowych.</p>
-    {% endif %}
-  </section>
+  {{ render_chart_card("Wykres hałasu (średnia godzinowa)", chart, "Wykres godzinowego hałasu", "Brak danych godzinowych.") }}
 
   <section class="grid two">
     <article class="card">
@@ -122,6 +83,13 @@
 
   <script>
     (() => {
+      const chartState = new WeakMap();
+
+      const formatTooltip = (label, value) => `${String(label).slice(0, 5)} • ${value.toFixed(1)} dBFS`;
+
+      const positionForIndex = (index, count, plotWidth, paddingLeft) =>
+        paddingLeft + (plotWidth / Math.max(count - 1, 1)) * index;
+
       const drawChart = (canvas) => {
         const labels = JSON.parse(canvas.dataset.labels || "[]");
         const values = JSON.parse(canvas.dataset.values || "[]");
@@ -147,6 +115,7 @@
         const minValue = Number(canvas.dataset.min || Math.min(...values));
         const maxValue = Number(canvas.dataset.max || Math.max(...values));
         const span = Math.max(maxValue - minValue, 1);
+        chartState.set(canvas, { labels, values, minValue, maxValue, span, padding, plotWidth, plotHeight, width, height });
 
         ctx.strokeStyle = "rgba(21, 33, 29, 0.08)";
         ctx.lineWidth = 1;
@@ -164,7 +133,7 @@
         ctx.lineCap = "round";
         ctx.beginPath();
         values.forEach((value, index) => {
-          const x = padding.left + (plotWidth / Math.max(values.length - 1, 1)) * index;
+          const x = positionForIndex(index, values.length, plotWidth, padding.left);
           const normalized = (value - minValue) / span;
           const y = padding.top + plotHeight - normalized * plotHeight;
           if (index === 0) {
@@ -190,7 +159,7 @@
         ctx.font = "12px serif";
         ctx.textBaseline = "top";
         ticks.forEach((index, tickIndex) => {
-          const x = padding.left + (plotWidth / Math.max(labels.length - 1, 1)) * index;
+          const x = positionForIndex(index, labels.length, plotWidth, padding.left);
           const label = String(labels[index]).slice(0, 5);
           let textAlign = "center";
           if (tickIndex === 0) {
@@ -203,8 +172,43 @@
         });
       };
 
+      const showTooltip = (canvas, event) => {
+        const state = chartState.get(canvas);
+        const wrap = canvas.closest(".bam-chart-wrap");
+        const tooltip = wrap?.querySelector(".chart-tooltip");
+        if (!state || !wrap || !tooltip) {
+          return;
+        }
+
+        const rect = canvas.getBoundingClientRect();
+        const relativeX = Math.min(Math.max(event.clientX - rect.left, state.padding.left), rect.width - state.padding.right);
+        const ratio = (relativeX - state.padding.left) / Math.max(state.plotWidth, 1);
+        const index = Math.min(state.values.length - 1, Math.max(0, Math.round(ratio * Math.max(state.values.length - 1, 1))));
+        const x = positionForIndex(index, state.values.length, state.plotWidth, state.padding.left);
+        const value = Number(state.values[index]);
+        const normalized = (value - state.minValue) / state.span;
+        const y = state.padding.top + state.plotHeight - normalized * state.plotHeight;
+
+        tooltip.hidden = false;
+        tooltip.textContent = formatTooltip(state.labels[index], value);
+        tooltip.style.left = `${x}px`;
+        tooltip.style.top = `${Math.max(y - 14, 8)}px`;
+      };
+
+      const hideTooltip = (canvas) => {
+        const wrap = canvas.closest(".bam-chart-wrap");
+        const tooltip = wrap?.querySelector(".chart-tooltip");
+        if (tooltip) {
+          tooltip.hidden = true;
+        }
+      };
+
       const renderAll = () => {
-        document.querySelectorAll(".bam-chart").forEach((canvas) => drawChart(canvas));
+        document.querySelectorAll(".bam-chart").forEach((canvas) => {
+          drawChart(canvas);
+          canvas.onmousemove = (event) => showTooltip(canvas, event);
+          canvas.onmouseleave = () => hideTooltip(canvas);
+        });
       };
 
       window.addEventListener("resize", renderAll);

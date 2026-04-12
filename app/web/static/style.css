@@ -126,10 +126,15 @@ main {
 }
 
 .chart-wrap {
+  position: relative;
   border: 1px solid var(--line);
   border-radius: 16px;
   padding: 12px;
   background: linear-gradient(180deg, rgba(30, 111, 92, 0.06), transparent);
+}
+
+.chart-card {
+  overflow: hidden;
 }
 
 .chart {
@@ -137,6 +142,7 @@ main {
   height: 280px;
   color: var(--accent);
   display: block;
+  cursor: crosshair;
 }
 
 .chart-legend {
@@ -149,6 +155,20 @@ main {
 
 .chart-legend {
   margin-top: 8px;
+}
+
+.chart-tooltip {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  pointer-events: none;
+  background: rgba(21, 33, 29, 0.92);
+  color: #fffdf8;
+  padding: 6px 8px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  box-shadow: 0 8px 20px rgba(21, 33, 29, 0.18);
 }
 
 .plain-list {

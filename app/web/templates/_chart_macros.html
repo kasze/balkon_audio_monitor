@@ -1,0 +1,24 @@
+{% macro render_chart_card(title, chart, aria_label, empty_message) -%}
+  <section class="card chart-card">
+    <h3>{{ title }}</h3>
+    {% if chart %}
+      <div class="chart-wrap bam-chart-wrap">
+        <canvas
+          class="chart bam-chart"
+          data-labels='{{ chart["labels"]|tojson }}'
+          data-values='{{ chart["values"]|tojson }}'
+          data-min='{{ chart["min_value"] }}'
+          data-max='{{ chart["max_value"] }}'
+          aria-label="{{ aria_label }}"
+        ></canvas>
+        <div class="chart-tooltip" hidden></div>
+        <div class="chart-legend">
+          <span>{{ chart["max_value"] }} dBFS</span>
+          <span>{{ chart["min_value"] }} dBFS</span>
+        </div>
+      </div>
+    {% else %}
+      <p>{{ empty_message }}</p>
+    {% endif %}
+  </section>
+{%- endmacro %}
