@@ -58,3 +58,30 @@ def test_aggregator_merges_short_gap_into_single_event() -> None:
     assert completed[0].summary.duration_seconds >= 2.0
     assert completed[0].clip_samples.size > 0
 
+
+def test_aggregator_trims_focus_clip_around_peak_frame() -> None:
+    aggregator = EventAggregator(
+        AggregationConfig(
+            pre_roll_seconds=0.5,
+            post_roll_seconds=0.5,
+            min_event_seconds=1.0,
+            focus_clip_seconds=4.0,
+            max_clip_seconds=30.0,
+            max_event_seconds=30.0,
+        ),
+        sample_rate=16_000,
+        frame_duration_seconds=0.5,
+    )
+
+    completed = []
+    for index in range(12):
+        dbfs = -12.0 if index == 8 else -35.0
+        completed.extend(aggregator.process(make_frame(index), make_features(index, dbfs=dbfs), True))
+    completed.extend(aggregator.flush())
+
+    assert len(completed) == 1
+    event = completed[0]
+    assert event.clip_samples.size == 16_000 * 4
+    assert event.summary.details["clip_trimmed"] == 1.0
+    assert event.summary.details["focus_clip_duration_seconds"] == 4.0
+    assert event.summary.details["focus_clip_start_offset_seconds"] == 2.0

@@ -41,6 +41,7 @@ class AggregationConfig:
     pre_roll_seconds: float = 1.0
     post_roll_seconds: float = 1.0
     min_event_seconds: float = 1.0
+    focus_clip_seconds: float = 8.0
     max_clip_seconds: float = 30.0
     max_event_seconds: float = 90.0
 

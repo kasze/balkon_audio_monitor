@@ -21,6 +21,7 @@ Lekki projekt do 24/7 monitoringu dzwiekow na balkonie na Raspberry Pi 3 B+ z US
 - rotuje stare clipy WAV po wieku i rozmiarze oraz pilnuje minimalnego zapasu wolnego miejsca na dysku
 - udostepnia panel WWW z dashboardem, szczegolami zdarzen i odsluchem clipow
 - wystawia endpoint zdrowia `GET /health`
+- dla odsluchu, widma i klasyfikacji zapisuje krotki focus clip wokol najmocniejszego fragmentu zdarzenia, zeby ograniczyc tlo
 
 ## Dlaczego taka architektura
 
@@ -207,6 +208,7 @@ SKIP_AUDIO=1 ./scripts/smoke_test.sh configs/config.yaml
 - brak resamplingu w aplikacji: dla stabilnosci MVP oczekuje WAV 16 kHz
 - dashboard pokazuje srednie godzinowe zamiast gestego wykresu z sekundowych punktow
 - jedna usluga laczy ingest i web, zeby uproscic operacje; gdy projekt dojrzeje, mozna je rozdzielic
+- zapisany clip nie musi odpowiadac calej dlugosci eventu; domyslnie jest to 8 s wokol najwyzszej energii, zeby lepiej izolowac dzwiek od tla
 
 ## Kolejny krok po MVP
 

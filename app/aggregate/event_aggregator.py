@@ -26,6 +26,7 @@ class EventAggregator:
         self.frame_duration_seconds = frame_duration_seconds
         self.pre_roll_frames = max(0, round(config.pre_roll_seconds / frame_duration_seconds))
         self.post_roll_frames = max(1, round(config.post_roll_seconds / frame_duration_seconds))
+        self.focus_clip_frames = max(1, round(config.focus_clip_seconds / frame_duration_seconds))
         self.clip_limit_samples = int(sample_rate * config.max_clip_seconds)
         self.reset()
 
@@ -84,8 +85,51 @@ class EventAggregator:
         state = self._state
         self._state = None
         summary = self._summarize(state.frames)
-        clip_samples = np.concatenate(state.clip_chunks) if state.clip_chunks else np.array([], dtype=np.float32)
+        clip_samples, focus_details = self._build_focus_clip(state.frames, state.clip_chunks)
+        summary.details.update(focus_details)
         return CompletedEvent(summary=summary, clip_samples=clip_samples, sample_rate=self.sample_rate)
+
+    def _build_focus_clip(
+        self,
+        frames: list[FrameFeatures],
+        clip_chunks: list[np.ndarray],
+    ) -> tuple[np.ndarray, dict[str, float]]:
+        if not clip_chunks:
+            return np.array([], dtype=np.float32), {
+                "focus_clip_duration_seconds": 0.0,
+                "focus_clip_start_offset_seconds": 0.0,
+                "clip_trimmed": 0.0,
+            }
+
+        full_clip = np.concatenate(clip_chunks)
+        available_frames = min(len(frames), len(clip_chunks))
+        if available_frames == 0:
+            return full_clip, {
+                "focus_clip_duration_seconds": float(full_clip.size / self.sample_rate),
+                "focus_clip_start_offset_seconds": 0.0,
+                "clip_trimmed": 0.0,
+            }
+
+        if available_frames <= self.focus_clip_frames:
+            return full_clip, {
+                "focus_clip_duration_seconds": float(full_clip.size / self.sample_rate),
+                "focus_clip_start_offset_seconds": 0.0,
+                "clip_trimmed": 0.0,
+            }
+
+        dbfs_values = np.array([item.dbfs for item in frames[:available_frames]], dtype=np.float32)
+        peak_index = int(np.argmax(dbfs_values))
+        start_frame = max(0, peak_index - self.focus_clip_frames // 2)
+        max_start = max(0, available_frames - self.focus_clip_frames)
+        start_frame = min(start_frame, max_start)
+        end_frame = min(available_frames, start_frame + self.focus_clip_frames)
+
+        focused_clip = np.concatenate(clip_chunks[start_frame:end_frame])
+        return focused_clip, {
+            "focus_clip_duration_seconds": float(focused_clip.size / self.sample_rate),
+            "focus_clip_start_offset_seconds": float(start_frame * self.frame_duration_seconds),
+            "clip_trimmed": 1.0,
+        }
 
     def _summarize(self, frames: list[FrameFeatures]) -> EventSummary:
         dbfs_values = np.array([item.dbfs for item in frames], dtype=np.float32)
