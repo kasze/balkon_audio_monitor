@@ -16,7 +16,12 @@ def create_app(repository: SQLiteRepository, status: RuntimeStatus, config: AppC
 
     @app.context_processor
     def inject_helpers() -> dict[str, object]:
-        return {"category_labels": CATEGORY_LABELS, "status": status.snapshot()}
+        return {
+            "category_labels": CATEGORY_LABELS,
+            "describe_classifier_decision": _describe_classifier_decision,
+            "format_local_timestamp": _format_local_timestamp,
+            "status": status.snapshot(),
+        }
 
     @app.get("/")
     def index():
@@ -80,4 +85,85 @@ def _build_chart(rows: list[dict[str, object]]) -> dict[str, object] | None:
         "labels": labels,
         "min_value": round(min_value, 1),
         "max_value": round(max_value, 1),
+    }
+
+
+def _format_local_timestamp(value: str | None) -> str:
+    if not value:
+        return "brak"
+
+    try:
+        timestamp = datetime.fromisoformat(value)
+    except ValueError:
+        return value
+
+    local_timestamp = timestamp.astimezone()
+    hundredths = local_timestamp.microsecond // 10_000
+    return f"{local_timestamp:%Y-%m-%d %H:%M:%S}.{hundredths:02d}"
+
+
+def _describe_classifier_decision(decision: dict[str, object]) -> dict[str, object]:
+    details = decision.get("details")
+    normalized_details = details if isinstance(details, dict) else {}
+    classifier_name = str(decision.get("classifier_name") or "unknown")
+    cache_hit = bool(normalized_details.get("cache_hit"))
+    external_api_name = normalized_details.get("external_api_name") or normalized_details.get("api_name")
+    used_external_api = bool(normalized_details.get("used_external_api") or external_api_name)
+
+    if used_external_api:
+        source = "external_api"
+        source_label = f"Zewnetrzne API: {external_api_name or 'nieznane'}"
+    elif cache_hit:
+        source = "cache_reuse"
+        source_label = "Reuse z lokalnego cache"
+    elif classifier_name.startswith("yamnet"):
+        source = "local_yamnet"
+        source_label = "Lokalny YAMNet (LiteRT)"
+    elif classifier_name.startswith("heuristic"):
+        source = "heuristic_fallback"
+        source_label = "Fallback heurystyczny"
+    else:
+        source = "other"
+        source_label = classifier_name
+
+    top_labels_raw = normalized_details.get("top_labels")
+    top_labels: list[dict[str, object]] = []
+    if isinstance(top_labels_raw, list):
+        for item in top_labels_raw[:5]:
+            if not isinstance(item, dict):
+                continue
+            label = str(item.get("label") or "unknown")
+            mean_score = item.get("mean_score")
+            peak_score = item.get("peak_score")
+            top_labels.append(
+                {
+                    "label": label,
+                    "mean_score": float(mean_score) if isinstance(mean_score, int | float) else None,
+                    "peak_score": float(peak_score) if isinstance(peak_score, int | float) else None,
+                }
+            )
+
+    category_scores_raw = normalized_details.get("category_scores")
+    category_scores: list[dict[str, object]] = []
+    if isinstance(category_scores_raw, dict):
+        sorted_scores = sorted(
+            ((str(name), float(score)) for name, score in category_scores_raw.items() if isinstance(score, int | float)),
+            key=lambda item: item[1],
+            reverse=True,
+        )
+        category_scores = [{"category": name, "score": score} for name, score in sorted_scores[:5]]
+
+    return {
+        "classifier_name": classifier_name,
+        "classifier_version": str(decision.get("classifier_version") or "-"),
+        "source": source,
+        "source_label": source_label,
+        "used_external_api": used_external_api,
+        "external_api_name": str(external_api_name) if external_api_name else None,
+        "cache_hit": cache_hit,
+        "cache_similarity": normalized_details.get("cache_similarity"),
+        "cache_source_event_id": normalized_details.get("cache_source_event_id"),
+        "fallback_reason": normalized_details.get("fallback_reason"),
+        "top_labels": top_labels,
+        "category_scores": category_scores,
     }

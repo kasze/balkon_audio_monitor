@@ -166,6 +166,46 @@ audio {
   margin-top: 12px;
 }
 
+.decision-list {
+  display: grid;
+  gap: 16px;
+}
+
+.decision-card {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px;
+  background: linear-gradient(180deg, rgba(30, 111, 92, 0.05), rgba(255, 253, 248, 0.9));
+}
+
+.decision-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.decision-header p,
+.decision-section .label,
+.detail-grid p {
+  margin: 0;
+}
+
+.detail-grid {
+  display: grid;
+  gap: 8px 16px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  margin-bottom: 12px;
+}
+
+.decision-section + .decision-section {
+  margin-top: 12px;
+}
+
+.compact-list li {
+  padding: 8px 0;
+}
+
 @media (max-width: 720px) {
   .page-header {
     flex-direction: column;
@@ -175,5 +215,8 @@ audio {
     width: 100%;
     min-width: 0;
   }
-}
 
+  .decision-header {
+    flex-direction: column;
+  }
+}

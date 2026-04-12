@@ -12,7 +12,7 @@
     {% if event.clip_path %}
       <audio controls preload="none" src="{{ url_for('clip_audio', event_id=event.id) }}"></audio>
     {% else %}
-      <p>Brak clipu audio.</p>
+      <p>Brak clipu audio lub clip zostal usuniety przez retencje.</p>
     {% endif %}
   </section>
 
@@ -31,18 +31,73 @@
     <article class="card">
       <h3>Decyzje klasyfikatora</h3>
       {% if event.decisions %}
-        <ul class="plain-list">
+        <div class="decision-list">
           {% for decision in event.decisions %}
-            <li>
-              <span>{{ decision.classifier_name }}: {{ category_labels.get(decision.category, decision.category) }}</span>
-              <strong>{{ '%.2f'|format(decision.confidence) }}</strong>
-            </li>
+            {% set trace = describe_classifier_decision(decision) %}
+            <article class="decision-card">
+              <div class="decision-header">
+                <div>
+                  <p class="label">Wynik</p>
+                  <strong>{{ category_labels.get(decision.category, decision.category) }}</strong>
+                </div>
+                <div>
+                  <p class="label">Pewnosc</p>
+                  <strong>{{ '%.2f'|format(decision.confidence) }}</strong>
+                </div>
+              </div>
+
+              <div class="detail-grid">
+                <p><strong>Sciezka identyfikacji:</strong> {{ trace.source_label }}</p>
+                <p><strong>Klasyfikator:</strong> {{ trace.classifier_name }} v{{ trace.classifier_version }}</p>
+                <p><strong>Zewnetrzne API:</strong> {{ trace.external_api_name if trace.used_external_api else 'nie' }}</p>
+                <p><strong>Cache reuse:</strong> {{ 'tak' if trace.cache_hit else 'nie' }}</p>
+                {% if trace.cache_hit and trace.cache_similarity is not none %}
+                  <p><strong>Podobienstwo cache:</strong> {{ '%.4f'|format(trace.cache_similarity) }}</p>
+                {% endif %}
+                {% if trace.cache_hit and trace.cache_source_event_id %}
+                  <p><strong>Event z cache:</strong> <a href="{{ url_for('event_details', event_id=trace.cache_source_event_id) }}">#{{ trace.cache_source_event_id }}</a></p>
+                {% endif %}
+                {% if trace.fallback_reason %}
+                  <p><strong>Powod fallbacku:</strong> {{ trace.fallback_reason }}</p>
+                {% endif %}
+              </div>
+
+              {% if trace.top_labels %}
+                <div class="decision-section">
+                  <p class="label">Top klasy YAMNet</p>
+                  <ul class="plain-list compact-list">
+                    {% for label in trace.top_labels %}
+                      <li>
+                        <span>{{ label.label }}</span>
+                        <strong>
+                          {% if label.mean_score is not none %}mean {{ '%.3f'|format(label.mean_score) }}{% endif %}
+                          {% if label.peak_score is not none %} / peak {{ '%.3f'|format(label.peak_score) }}{% endif %}
+                        </strong>
+                      </li>
+                    {% endfor %}
+                  </ul>
+                </div>
+              {% endif %}
+
+              {% if trace.category_scores %}
+                <div class="decision-section">
+                  <p class="label">Score kategorii domenowych</p>
+                  <ul class="plain-list compact-list">
+                    {% for item in trace.category_scores %}
+                      <li>
+                        <span>{{ category_labels.get(item.category, item.category) }}</span>
+                        <strong>{{ '%.3f'|format(item.score) }}</strong>
+                      </li>
+                    {% endfor %}
+                  </ul>
+                </div>
+              {% endif %}
+            </article>
           {% endfor %}
-        </ul>
+        </div>
       {% else %}
         <p>Brak zapisanych decyzji.</p>
       {% endif %}
     </article>
   </section>
 {% endblock %}
-
