@@ -23,10 +23,29 @@ aggregation:
   max_clip_seconds: 30.0
   max_event_seconds: 90.0
 
+classifier:
+  backend: yamnet
+  reuse_similarity_threshold: 0.992
+  reuse_confidence_threshold: 0.60
+  similarity_cache_limit: 200
+  similarity_lookback_days: 30
+  yamnet_model_path: models/yamnet.tflite
+  yamnet_class_map_path: models/yamnet_class_map.csv
+  yamnet_model_url: https://tfhub.dev/google/lite-model/yamnet/classification/tflite/1?lite-format=tflite
+  yamnet_class_map_url: https://raw.githubusercontent.com/tensorflow/models/master/research/audioset/yamnet/yamnet_class_map.csv
+  yamnet_num_threads: 1
+  yamnet_max_analysis_seconds: 12.0
+  yamnet_max_windows: 24
+  yamnet_min_category_score: 0.08
+  yamnet_top_k: 8
+
 storage:
   database_path: data/db/audio_monitor.sqlite3
   clip_dir: data/clips
   keep_clips: true
+  clip_max_megabytes: 1024
+  clip_max_age_days: 14
+  min_free_disk_megabytes: 512
 
 web:
   host: 0.0.0.0
@@ -36,4 +55,3 @@ web:
 
 logging:
   level: INFO
-

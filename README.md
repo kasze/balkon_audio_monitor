@@ -8,14 +8,16 @@ Lekki projekt do 24/7 monitoringu dzwiekow na balkonie na Raspberry Pi 3 B+ z US
 - liczy lekkie cechy audio na ramkach 0.5 s
 - wykrywa epizody przez adaptacyjny prog energii z histereza
 - scala sasiednie ramki w jedno zdarzenie
-- klasyfikuje zdarzenia lekkim baseline heurystycznym do kategorii:
+- klasyfikuje zdarzenia lokalnie przez YAMNet uruchamiany w LiteRT do kategorii:
   - `ambulance`
   - `police`
   - `fire_truck`
   - `airplane`
   - `helicopter`
   - `street_background`
+- cache'uje podobne klipy w SQLite, zeby nie przepalac CPU na wielokrotnym rozpoznawaniu bardzo podobnych zdarzen i zeby przygotowac grunt pod przyszly reuse dla BirdNET / zewnetrznych API
 - zapisuje interwaly halasu, zdarzenia, clipy i decyzje klasyfikatora do SQLite
+- rotuje stare clipy WAV po wieku i rozmiarze oraz pilnuje minimalnego zapasu wolnego miejsca na dysku
 - udostepnia panel WWW z dashboardem, szczegolami zdarzen i odsluchem clipow
 - wystawia endpoint zdrowia `GET /health`
 
@@ -23,7 +25,7 @@ Lekki projekt do 24/7 monitoringu dzwiekow na balkonie na Raspberry Pi 3 B+ z US
 
 - `arecord` zamiast PortAudio/PyAudio: natywnie pasuje do ALSA i zwykle zachowuje sie stabilniej na headless Raspberry Pi.
 - `numpy` + jedna FFT na ramke: to jest realne dla RPi 3 B+ i wystarcza do MVP.
-- brak modelu ML w MVP: klasyfikacja jest heurystyczna, bo priorytetem jest ciagla praca i prosty debugging. W repo jest wyrazna granica na przyszly klasyfikator TFLite.
+- YAMNet idzie lokalnie przez LiteRT, bez chmury i bez quota API. Cache podobienstwa sluzy do oszczedzania CPU teraz i do przyszlego reuse klasyfikacji dla kolejnych modeli/API.
 - Flask + Waitress + server-side HTML: niski narzut RAM/CPU i zero SPA.
 - SQLite: lokalnie, bez zaleznosci od chmury i bez zbednej infrastruktury.
 
@@ -42,7 +44,7 @@ Lekki projekt do 24/7 monitoringu dzwiekow na balkonie na Raspberry Pi 3 B+ z US
 - `app/capture` live capture przez `arecord` oraz pliki WAV
 - `app/features` lekkie cechy audio
 - `app/detect` detekcja epizodow z histereza
-- `app/classify` baseline heurystyczny
+- `app/classify` YAMNet LiteRT, cache podobienstwa i fallback heurystyczny
 - `app/aggregate` laczenie ramek w interwaly halasu i zdarzenia
 - `app/storage` SQLite i clipy WAV
 - `app/web` panel WWW
@@ -104,6 +106,14 @@ arecord -l
 ```
 
 Jesli usluga juz trzyma input, `check-audio` zwroci komunikat o zajetym urzadzeniu zamiast falszywego bledu konfiguracji.
+
+## YAMNet
+
+- backend klasyfikacji jest ustawiony domyslnie na `classifier.backend: yamnet`
+- model `.tflite` i `yamnet_class_map.csv` pobieraja sie automatycznie przy pierwszej klasyfikacji do `models/`
+- na Raspberry Pi 3 B+ inference jest ograniczony do fragmentu zdarzenia i limitu okien, zeby nie mielic calego 90-sekundowego clipu
+- jesli YAMNet albo LiteRT nie sa dostepne, aplikacja fallbackuje do heurystyki i zapisuje powod w `classifier_decisions.details`
+- cache podobienstwa audio siedzi w SQLite i pozwala reuse'owac decyzje dla niemal identycznych klipow
 
 4. Uruchom bez weba:
 
@@ -175,6 +185,14 @@ Na laptopie bez mikrofonu USB:
 SKIP_AUDIO=1 ./scripts/smoke_test.sh configs/config.yaml
 ```
 
+## Retencja clipow
+
+- `storage.clip_max_megabytes` ogranicza laczny rozmiar `data/clips/`
+- `storage.clip_max_age_days` kasuje stare clipy po wieku
+- `storage.min_free_disk_megabytes` trzyma rezerwe wolnego miejsca na filesystemie
+- przy retencji usuwane sa tylko pliki WAV i ich metadane; eventy, statystyki i decyzje klasyfikatora zostaja w SQLite
+- jesli limitu nie da sie spelnic nawet po cleanupie, nowy clip nie zostanie zapisany, ale event nadal trafi do bazy
+
 ## Zbieranie probek do dalszego ulepszania
 
 - nagrywaj osobne sample przez [scripts/record_sample.sh](/Users/kasze/audio_monitor/scripts/record_sample.sh)
@@ -184,7 +202,7 @@ SKIP_AUDIO=1 ./scripts/smoke_test.sh configs/config.yaml
 
 ## Ograniczenia MVP
 
-- klasyfikacja syren jest heurystyczna i nie rozroznia typow tak dobrze jak model uczony
+- mapowanie klas YAMNet do naszych kategorii jest warstwa translacji nad AudioSet, wiec nadal wymaga strojenia na realnych probkach z balkonu
 - brak resamplingu w aplikacji: dla stabilnosci MVP oczekuje WAV 16 kHz
 - dashboard pokazuje srednie godzinowe zamiast gestego wykresu z sekundowych punktow
 - jedna usluga laczy ingest i web, zeby uproscic operacje; gdy projekt dojrzeje, mozna je rozdzielic

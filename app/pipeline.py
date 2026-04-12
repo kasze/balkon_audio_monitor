@@ -5,13 +5,14 @@ from collections.abc import Iterable
 from threading import Event, Lock
 
 from app.aggregate.event_aggregator import EventAggregator
+from app.classify.service import AppClassifier
 from app.aggregate.noise_intervals import NoiseIntervalCollector
-from app.classify.heuristics import HeuristicEventClassifier
 from app.config import AppConfig
 from app.features.extractor import FeatureExtractor
 from app.models import AudioFrame
 from app.storage.clips import ClipStore
 from app.storage.database import SQLiteRepository
+from app.storage.retention import ClipRetentionManager
 from app.detect.detector import AdaptiveEnergyDetector
 
 LOGGER = logging.getLogger(__name__)
@@ -59,8 +60,9 @@ class AudioPipeline:
             config.audio.sample_rate,
             config.audio.frame_duration_seconds,
         )
-        self.classifier = HeuristicEventClassifier()
+        self.classifier = AppClassifier(config.classifier, repository)
         self.clip_store = ClipStore(config.storage.clip_dir)
+        self.retention = ClipRetentionManager(config.storage, repository)
 
     def reset_runtime_state(self) -> None:
         self.extractor.reset()
@@ -105,9 +107,20 @@ class AudioPipeline:
             self._persist_event(completed)
 
     def _persist_event(self, completed) -> None:
-        decision = self.classifier.classify(completed.summary)
-        clip = self.clip_store.save(completed) if self.config.storage.keep_clips else None
+        outcome = self.classifier.classify(completed)
+        decision = outcome.decision
+        clip = None
+        if self.config.storage.keep_clips:
+            estimated_clip_bytes = self.clip_store.estimate_wav_size(completed.clip_samples.size)
+            if self.retention.prepare_for_clip(estimated_clip_bytes):
+                try:
+                    clip = self.clip_store.save(completed)
+                except OSError as exc:
+                    LOGGER.warning("Failed to save clip audio: %s", exc)
         persisted = self.repository.insert_event(completed, decision, clip)
+        if clip is not None:
+            self.retention.enforce_limits()
+        self.classifier.remember(outcome, persisted.event_id)
         self.status.increment("events_written")
         LOGGER.info(
             "Persisted event id=%s category=%s confidence=%.2f duration=%.1fs clip=%s",

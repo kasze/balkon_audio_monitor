@@ -6,6 +6,7 @@ __pycache__/
 data/db/*.sqlite3
 data/clips/**/*.wav
 data/clips/*.wav
+models/*.tflite
+models/*.csv
 *.log
 configs/local.yaml
-

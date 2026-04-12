@@ -73,8 +73,10 @@ nano configs/config.yaml
 
 Ustaw przynajmniej:
 - `audio.arecord_device`, tylko jesli chcesz recznie wymusic urzadzenie; puste pole wlacza auto-detekcje USB capture
+- `classifier.backend`, domyslnie `yamnet`
 - `web.port`, jesli 8080 nie pasuje
 - sciezki storage, jesli chcesz inne niz domyslne
+- `storage.clip_max_megabytes`, `storage.clip_max_age_days` i `storage.min_free_disk_megabytes`, zeby clipy nie zapelnily karty SD
 
 ## 6. Testy po pierwszym deployu
 

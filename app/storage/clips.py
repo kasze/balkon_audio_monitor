@@ -15,6 +15,10 @@ class ClipStore:
     def __init__(self, base_dir: Path) -> None:
         self.base_dir = base_dir
 
+    @staticmethod
+    def estimate_wav_size(sample_count: int) -> int:
+        return max(0, sample_count) * 2 + 44
+
     def save(self, event: CompletedEvent) -> ClipMetadata | None:
         if event.clip_samples.size == 0:
             return None

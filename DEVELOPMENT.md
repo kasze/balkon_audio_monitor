@@ -64,11 +64,13 @@ sudo systemctl restart audio-monitor
 - `web` pozwala sprawdzic panel bez live capture
 - `smoke_test.sh` daje szybki test integracyjny systemu
 - baza SQLite jest w `data/db/audio_monitor.sqlite3`
+- `models/` trzyma lokalnie pobrany model YAMNet i class map
 
 ## Co sprawdzac po zmianach
 
 - czy pipeline nadal zapisuje `noise_intervals`
 - czy jedna syrena nie rozbija sie na wiele eventow
 - czy clipy zapisuja sie do `data/clips/`
+- czy retencja usuwa stare clipy i nie zjada eventow z SQLite
 - czy `GET /health` odpowiada
 - czy restart systemd przywraca usluge po bledzie

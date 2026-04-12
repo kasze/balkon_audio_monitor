@@ -4,11 +4,19 @@ import json
 import sqlite3
 from contextlib import closing
 from dataclasses import asdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from app.models import ClassifierDecision, ClipMetadata, CompletedEvent, NoiseInterval, PersistedEvent
+from app.models import (
+    ClassifierCacheEntry,
+    ClassifierDecision,
+    ClipMetadata,
+    CompletedEvent,
+    NoiseInterval,
+    PersistedEvent,
+    StoredClip,
+)
 
 
 def _iso(dt: datetime) -> str:
@@ -93,6 +101,20 @@ class SQLiteRepository:
                     FOREIGN KEY (event_id) REFERENCES events(id)
                 );
 
+                CREATE TABLE IF NOT EXISTS classifier_cache (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    event_id INTEGER NOT NULL,
+                    classifier_name TEXT NOT NULL,
+                    classifier_version TEXT NOT NULL,
+                    category TEXT NOT NULL,
+                    confidence REAL NOT NULL,
+                    signature_hash TEXT NOT NULL,
+                    signature_json TEXT NOT NULL,
+                    details_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (event_id) REFERENCES events(id)
+                );
+
                 CREATE TABLE IF NOT EXISTS hourly_stats (
                     bucket_start TEXT PRIMARY KEY,
                     avg_dbfs REAL NOT NULL,
@@ -113,6 +135,10 @@ class SQLiteRepository:
                 CREATE INDEX IF NOT EXISTS idx_noise_intervals_started_at ON noise_intervals(started_at);
                 CREATE INDEX IF NOT EXISTS idx_events_started_at ON events(started_at);
                 CREATE INDEX IF NOT EXISTS idx_events_category ON events(category);
+                CREATE INDEX IF NOT EXISTS idx_classifier_cache_lookup
+                    ON classifier_cache(classifier_name, created_at DESC);
+                CREATE INDEX IF NOT EXISTS idx_classifier_cache_signature_hash
+                    ON classifier_cache(classifier_name, signature_hash);
                 """
             )
             connection.commit()
@@ -295,6 +321,129 @@ class SQLiteRepository:
             {**dict(item), "details": json.loads(item["details_json"])} for item in decision_rows
         ]
         return event
+
+    def insert_classifier_cache_entry(
+        self,
+        event_id: int,
+        classifier_name: str,
+        classifier_version: str,
+        category: str,
+        confidence: float,
+        signature_hash: str,
+        signature: list[float],
+        details: dict[str, Any],
+    ) -> None:
+        with closing(self._connect()) as connection:
+            connection.execute(
+                """
+                INSERT INTO classifier_cache (
+                    event_id, classifier_name, classifier_version, category, confidence,
+                    signature_hash, signature_json, details_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    event_id,
+                    classifier_name,
+                    classifier_version,
+                    category,
+                    confidence,
+                    signature_hash,
+                    json.dumps(signature),
+                    json.dumps(details),
+                    _iso(datetime.now().astimezone()),
+                ),
+            )
+            connection.commit()
+
+    def list_classifier_cache_entries(
+        self,
+        classifier_name: str,
+        min_confidence: float,
+        lookback_days: int,
+        limit: int,
+    ) -> list[ClassifierCacheEntry]:
+        created_after = _iso(datetime.now().astimezone() - timedelta(days=lookback_days))
+        with closing(self._connect()) as connection:
+            rows = connection.execute(
+                """
+                SELECT event_id, classifier_name, classifier_version, category, confidence,
+                       signature_hash, signature_json, details_json
+                FROM classifier_cache
+                WHERE classifier_name = ?
+                  AND confidence >= ?
+                  AND created_at >= ?
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                (classifier_name, min_confidence, created_after, limit),
+            ).fetchall()
+        return [
+            ClassifierCacheEntry(
+                event_id=int(row["event_id"]),
+                classifier_name=str(row["classifier_name"]),
+                classifier_version=str(row["classifier_version"]),
+                category=str(row["category"]),
+                confidence=float(row["confidence"]),
+                signature_hash=str(row["signature_hash"]),
+                signature=list(json.loads(row["signature_json"])),
+                details=dict(json.loads(row["details_json"])),
+            )
+            for row in rows
+        ]
+
+    def total_clip_bytes(self) -> int:
+        with closing(self._connect()) as connection:
+            row = connection.execute("SELECT COALESCE(SUM(byte_size), 0) AS total FROM clips").fetchone()
+        return int(row["total"]) if row else 0
+
+    def list_oldest_clips(self, limit: int) -> list[StoredClip]:
+        with closing(self._connect()) as connection:
+            rows = connection.execute(
+                """
+                SELECT id, path, byte_size, created_at
+                FROM clips
+                ORDER BY created_at ASC, id ASC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [
+            StoredClip(
+                clip_id=int(row["id"]),
+                path=Path(str(row["path"])),
+                byte_size=int(row["byte_size"]),
+                created_at=str(row["created_at"]),
+            )
+            for row in rows
+        ]
+
+    def list_clips_created_before(self, created_before: str, limit: int) -> list[StoredClip]:
+        with closing(self._connect()) as connection:
+            rows = connection.execute(
+                """
+                SELECT id, path, byte_size, created_at
+                FROM clips
+                WHERE created_at < ?
+                ORDER BY created_at ASC, id ASC
+                LIMIT ?
+                """,
+                (created_before, limit),
+            ).fetchall()
+        return [
+            StoredClip(
+                clip_id=int(row["id"]),
+                path=Path(str(row["path"])),
+                byte_size=int(row["byte_size"]),
+                created_at=str(row["created_at"]),
+            )
+            for row in rows
+        ]
+
+    def delete_clip(self, clip_id: int) -> None:
+        with closing(self._connect()) as connection:
+            connection.execute("UPDATE events SET clip_id = NULL WHERE clip_id = ?", (clip_id,))
+            connection.execute("DELETE FROM clips WHERE id = ?", (clip_id,))
+            connection.commit()
 
     def recent_events_count(self) -> int:
         with closing(self._connect()) as connection:

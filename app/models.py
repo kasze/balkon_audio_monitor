@@ -94,6 +94,14 @@ class ClipMetadata:
 
 
 @dataclass(slots=True)
+class StoredClip:
+    clip_id: int
+    path: Path
+    byte_size: int
+    created_at: str
+
+
+@dataclass(slots=True)
 class ClassifierDecision:
     classifier_name: str
     classifier_version: str
@@ -108,3 +116,21 @@ class PersistedEvent:
     category: str
     clip_path: str | None
 
+
+@dataclass(slots=True)
+class ClassificationOutcome:
+    decision: ClassifierDecision
+    signature_hash: str | None = None
+    signature: list[float] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class ClassifierCacheEntry:
+    event_id: int
+    classifier_name: str
+    classifier_version: str
+    category: str
+    confidence: float
+    signature_hash: str
+    signature: list[float]
+    details: dict[str, Any] = field(default_factory=dict)
