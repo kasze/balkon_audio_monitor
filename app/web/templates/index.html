@@ -30,20 +30,18 @@
     <h3>Ostatnia godzina hałasu</h3>
     {% if recent_chart %}
       <div class="chart-wrap">
-        <svg viewBox="0 0 {{ recent_chart.width }} {{ recent_chart.height }}" class="chart">
-          <polyline fill="none" stroke="currentColor" stroke-width="3" points="{{ recent_chart.polyline }}"></polyline>
-        </svg>
+        <canvas
+          class="chart bam-chart"
+          data-labels='{{ recent_chart.labels|tojson }}'
+          data-values='{{ recent_chart.values|tojson }}'
+          data-min='{{ recent_chart.min_value }}'
+          data-max='{{ recent_chart.max_value }}'
+          aria-label="Wykres hałasu z ostatniej godziny"
+        ></canvas>
         <div class="chart-legend">
           <span>{{ recent_chart.max_value }} dBFS</span>
           <span>{{ recent_chart.min_value }} dBFS</span>
         </div>
-      </div>
-      <div class="hour-labels sparse-labels">
-        {% for label in recent_chart.labels %}
-          {% if loop.first or loop.index0 % 6 == 0 or loop.last %}
-            <span>{{ label }}</span>
-          {% endif %}
-        {% endfor %}
       </div>
     {% else %}
       <p>Brak danych z ostatniej godziny.</p>
@@ -54,20 +52,18 @@
     <h3>Wykres hałasu (średnia godzinowa)</h3>
     {% if chart %}
       <div class="chart-wrap">
-        <svg viewBox="0 0 {{ chart.width }} {{ chart.height }}" class="chart">
-          <polyline fill="none" stroke="currentColor" stroke-width="3" points="{{ chart.polyline }}"></polyline>
-        </svg>
+        <canvas
+          class="chart bam-chart"
+          data-labels='{{ chart.labels|tojson }}'
+          data-values='{{ chart.values|tojson }}'
+          data-min='{{ chart.min_value }}'
+          data-max='{{ chart.max_value }}'
+          aria-label="Wykres godzinowego hałasu"
+        ></canvas>
         <div class="chart-legend">
           <span>{{ chart.max_value }} dBFS</span>
           <span>{{ chart.min_value }} dBFS</span>
         </div>
-      </div>
-      <div class="hour-labels sparse-labels">
-        {% for label in chart.labels %}
-          {% if loop.first or loop.index0 % 4 == 0 or loop.last %}
-            <span>{{ label }}</span>
-          {% endif %}
-        {% endfor %}
       </div>
     {% else %}
       <p>Brak danych godzinowych.</p>
@@ -123,4 +119,96 @@
       <p>Brak zapisanych zdarzeń.</p>
     {% endif %}
   </section>
+
+  <script>
+    (() => {
+      const drawChart = (canvas) => {
+        const labels = JSON.parse(canvas.dataset.labels || "[]");
+        const values = JSON.parse(canvas.dataset.values || "[]");
+        if (!labels.length || !values.length) {
+          return;
+        }
+
+        const dpr = window.devicePixelRatio || 1;
+        const width = Math.max(Math.floor(canvas.clientWidth), 320);
+        const height = 280;
+        canvas.width = width * dpr;
+        canvas.height = height * dpr;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          return;
+        }
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, width, height);
+
+        const padding = { top: 12, right: 12, bottom: 40, left: 12 };
+        const plotWidth = width - padding.left - padding.right;
+        const plotHeight = height - padding.top - padding.bottom;
+        const minValue = Number(canvas.dataset.min || Math.min(...values));
+        const maxValue = Number(canvas.dataset.max || Math.max(...values));
+        const span = Math.max(maxValue - minValue, 1);
+
+        ctx.strokeStyle = "rgba(21, 33, 29, 0.08)";
+        ctx.lineWidth = 1;
+        for (let i = 0; i < 3; i += 1) {
+          const y = padding.top + (plotHeight / 2) * i;
+          ctx.beginPath();
+          ctx.moveTo(padding.left, y);
+          ctx.lineTo(width - padding.right, y);
+          ctx.stroke();
+        }
+
+        ctx.strokeStyle = "#1e6f5c";
+        ctx.lineWidth = 3;
+        ctx.lineJoin = "round";
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        values.forEach((value, index) => {
+          const x = padding.left + (plotWidth / Math.max(values.length - 1, 1)) * index;
+          const normalized = (value - minValue) / span;
+          const y = padding.top + plotHeight - normalized * plotHeight;
+          if (index === 0) {
+            ctx.moveTo(x, y);
+          } else {
+            ctx.lineTo(x, y);
+          }
+        });
+        ctx.stroke();
+
+        const approxLabelWidth = 52;
+        const maxTicks = Math.max(2, Math.floor(plotWidth / approxLabelWidth));
+        const tickStep = Math.max(1, Math.ceil((labels.length - 1) / Math.max(maxTicks - 1, 1)));
+        const ticks = [];
+        for (let index = 0; index < labels.length; index += tickStep) {
+          ticks.push(index);
+        }
+        if (ticks[ticks.length - 1] !== labels.length - 1) {
+          ticks.push(labels.length - 1);
+        }
+
+        ctx.fillStyle = "#5d6b64";
+        ctx.font = "12px serif";
+        ctx.textBaseline = "top";
+        ticks.forEach((index, tickIndex) => {
+          const x = padding.left + (plotWidth / Math.max(labels.length - 1, 1)) * index;
+          const label = String(labels[index]).slice(0, 5);
+          let textAlign = "center";
+          if (tickIndex === 0) {
+            textAlign = "left";
+          } else if (tickIndex === ticks.length - 1) {
+            textAlign = "right";
+          }
+          ctx.textAlign = textAlign;
+          ctx.fillText(label, x, height - padding.bottom + 14);
+        });
+      };
+
+      const renderAll = () => {
+        document.querySelectorAll(".bam-chart").forEach((canvas) => drawChart(canvas));
+      };
+
+      window.addEventListener("resize", renderAll);
+      renderAll();
+    })();
+  </script>
 {% endblock %}

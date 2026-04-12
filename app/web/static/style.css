@@ -134,12 +134,12 @@ main {
 
 .chart {
   width: 100%;
-  height: auto;
+  height: 280px;
   color: var(--accent);
+  display: block;
 }
 
-.chart-legend,
-.hour-labels {
+.chart-legend {
   display: flex;
   justify-content: space-between;
   gap: 8px;
@@ -147,14 +147,8 @@ main {
   font-size: 0.85rem;
 }
 
-.hour-labels {
-  margin-top: 12px;
-  flex-wrap: wrap;
-}
-
-.sparse-labels {
-  justify-content: flex-start;
-  gap: 18px;
+.chart-legend {
+  margin-top: 8px;
 }
 
 .plain-list {

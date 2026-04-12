@@ -90,26 +90,15 @@ def _build_chart(rows: list[dict[str, object]], label_slice: slice = slice(11, 1
         return None
     labels = [str(row["bucket_start"])[label_slice] for row in rows]
     values = [float(row["avg_dbfs"]) for row in rows]
-    width = 760
-    height = 220
     min_value = min(values)
     max_value = max(values)
     if max_value - min_value < 1.0:
         max_value += 0.5
         min_value -= 0.5
 
-    points: list[str] = []
-    for index, value in enumerate(values):
-        x = 20 + index * ((width - 40) / max(1, len(values) - 1))
-        normalized = (value - min_value) / (max_value - min_value)
-        y = height - 20 - normalized * (height - 40)
-        points.append(f"{x:.1f},{y:.1f}")
-
     return {
-        "width": width,
-        "height": height,
-        "polyline": " ".join(points),
         "labels": labels,
+        "values": [round(value, 3) for value in values],
         "min_value": round(min_value, 1),
         "max_value": round(max_value, 1),
     }
