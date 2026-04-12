@@ -59,10 +59,12 @@ class SQLiteRepository:
                 CREATE TABLE IF NOT EXISTS clips (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     path TEXT NOT NULL,
+                    spectrogram_path TEXT,
                     sample_rate INTEGER NOT NULL,
                     channels INTEGER NOT NULL,
                     duration_seconds REAL NOT NULL,
                     byte_size INTEGER NOT NULL,
+                    spectrogram_byte_size INTEGER NOT NULL DEFAULT 0,
                     sha1 TEXT NOT NULL,
                     created_at TEXT NOT NULL
                 );
@@ -141,6 +143,8 @@ class SQLiteRepository:
                     ON classifier_cache(classifier_name, signature_hash);
                 """
             )
+            self._ensure_column(connection, "clips", "spectrogram_path", "TEXT")
+            self._ensure_column(connection, "clips", "spectrogram_byte_size", "INTEGER NOT NULL DEFAULT 0")
             connection.commit()
 
     def insert_noise_interval(self, interval: NoiseInterval) -> None:
@@ -178,24 +182,30 @@ class SQLiteRepository:
         with closing(self._connect()) as connection:
             clip_id = None
             clip_path = None
+            spectrogram_path = None
             if clip is not None:
                 cursor = connection.execute(
                     """
-                    INSERT INTO clips (path, sample_rate, channels, duration_seconds, byte_size, sha1, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO clips (
+                        path, spectrogram_path, sample_rate, channels, duration_seconds,
+                        byte_size, spectrogram_byte_size, sha1, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         str(clip.path),
+                        str(clip.spectrogram_path) if clip.spectrogram_path else None,
                         clip.sample_rate,
                         clip.channels,
                         clip.duration_seconds,
                         clip.byte_size,
+                        clip.spectrogram_byte_size,
                         clip.sha1,
                         created_at,
                     ),
                 )
                 clip_id = int(cursor.lastrowid)
                 clip_path = str(clip.path)
+                spectrogram_path = str(clip.spectrogram_path) if clip.spectrogram_path else None
 
             summary = event.summary
             cursor = connection.execute(
@@ -245,7 +255,12 @@ class SQLiteRepository:
             )
             self._upsert_event_stats(connection, event)
             connection.commit()
-        return PersistedEvent(event_id=event_id, category=decision.category, clip_path=clip_path)
+        return PersistedEvent(
+            event_id=event_id,
+            category=decision.category,
+            clip_path=clip_path,
+            spectrogram_path=spectrogram_path,
+        )
 
     def get_dashboard(self, day: str, recent_limit: int = 20) -> dict[str, Any]:
         with closing(self._connect()) as connection:
@@ -296,7 +311,8 @@ class SQLiteRepository:
         with closing(self._connect()) as connection:
             row = connection.execute(
                 """
-                SELECT e.*, c.path AS clip_path, c.duration_seconds AS clip_duration, c.sample_rate AS clip_sample_rate
+                SELECT e.*, c.path AS clip_path, c.spectrogram_path AS spectrogram_path,
+                       c.duration_seconds AS clip_duration, c.sample_rate AS clip_sample_rate
                 FROM events e
                 LEFT JOIN clips c ON c.id = e.clip_id
                 WHERE e.id = ?
@@ -393,14 +409,16 @@ class SQLiteRepository:
 
     def total_clip_bytes(self) -> int:
         with closing(self._connect()) as connection:
-            row = connection.execute("SELECT COALESCE(SUM(byte_size), 0) AS total FROM clips").fetchone()
+            row = connection.execute(
+                "SELECT COALESCE(SUM(byte_size + COALESCE(spectrogram_byte_size, 0)), 0) AS total FROM clips"
+            ).fetchone()
         return int(row["total"]) if row else 0
 
     def list_oldest_clips(self, limit: int) -> list[StoredClip]:
         with closing(self._connect()) as connection:
             rows = connection.execute(
                 """
-                SELECT id, path, byte_size, created_at
+                SELECT id, path, spectrogram_path, byte_size, spectrogram_byte_size, created_at
                 FROM clips
                 ORDER BY created_at ASC, id ASC
                 LIMIT ?
@@ -411,7 +429,9 @@ class SQLiteRepository:
             StoredClip(
                 clip_id=int(row["id"]),
                 path=Path(str(row["path"])),
+                spectrogram_path=Path(str(row["spectrogram_path"])) if row["spectrogram_path"] else None,
                 byte_size=int(row["byte_size"]),
+                spectrogram_byte_size=int(row["spectrogram_byte_size"]),
                 created_at=str(row["created_at"]),
             )
             for row in rows
@@ -421,7 +441,7 @@ class SQLiteRepository:
         with closing(self._connect()) as connection:
             rows = connection.execute(
                 """
-                SELECT id, path, byte_size, created_at
+                SELECT id, path, spectrogram_path, byte_size, spectrogram_byte_size, created_at
                 FROM clips
                 WHERE created_at < ?
                 ORDER BY created_at ASC, id ASC
@@ -433,7 +453,9 @@ class SQLiteRepository:
             StoredClip(
                 clip_id=int(row["id"]),
                 path=Path(str(row["path"])),
+                spectrogram_path=Path(str(row["spectrogram_path"])) if row["spectrogram_path"] else None,
                 byte_size=int(row["byte_size"]),
+                spectrogram_byte_size=int(row["spectrogram_byte_size"]),
                 created_at=str(row["created_at"]),
             )
             for row in rows
@@ -454,6 +476,12 @@ class SQLiteRepository:
         connection = sqlite3.connect(self.database_path)
         connection.row_factory = sqlite3.Row
         return connection
+
+    def _ensure_column(self, connection: sqlite3.Connection, table: str, column: str, definition: str) -> None:
+        rows = connection.execute(f"PRAGMA table_info({table})").fetchall()
+        if any(str(row["name"]) == column for row in rows):
+            return
+        connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
     def _upsert_interval_stats(self, connection: sqlite3.Connection, interval: NoiseInterval) -> None:
         bucket_start = interval.started_at.astimezone().strftime("%Y-%m-%d %H:00:00")

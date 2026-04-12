@@ -44,14 +44,18 @@ def _insert_clip_event(
     started_at: datetime,
 ) -> int:
     clip_path = clip_dir / clip_name
+    spectrogram_path = clip_dir / clip_name.replace(".wav", ".jpg")
     clip_path.parent.mkdir(parents=True, exist_ok=True)
     clip_path.write_bytes(b"\x01" * byte_size)
+    spectrogram_path.write_bytes(b"\x02" * 16_000)
     clip = ClipMetadata(
         path=clip_path,
+        spectrogram_path=spectrogram_path,
         sample_rate=16_000,
         channels=1,
         duration_seconds=2.0,
         byte_size=byte_size,
+        spectrogram_byte_size=16_000,
         sha1=f"{clip_name:0<40}"[:40],
     )
     decision = ClassifierDecision(
@@ -98,9 +102,13 @@ def test_prepare_for_clip_deletes_oldest_when_size_limit_exceeded(tmp_path: Path
 
     assert manager.prepare_for_clip(200_000) is True
     assert not (clip_dir / "older.wav").exists()
+    assert not (clip_dir / "older.jpg").exists()
     assert (clip_dir / "newer.wav").exists()
+    assert (clip_dir / "newer.jpg").exists()
     assert repository.get_event(first_event)["clip_path"] is None
+    assert repository.get_event(first_event)["spectrogram_path"] is None
     assert repository.get_event(second_event)["clip_path"] is not None
+    assert repository.get_event(second_event)["spectrogram_path"] is not None
 
 
 def test_enforce_limits_deletes_clips_older_than_retention_window(tmp_path: Path) -> None:
@@ -128,9 +136,13 @@ def test_enforce_limits_deletes_clips_older_than_retention_window(tmp_path: Path
     manager.enforce_limits()
 
     assert not (clip_dir / "expired.wav").exists()
+    assert not (clip_dir / "expired.jpg").exists()
     assert (clip_dir / "fresh.wav").exists()
+    assert (clip_dir / "fresh.jpg").exists()
     assert repository.get_event(expired_event)["clip_path"] is None
+    assert repository.get_event(expired_event)["spectrogram_path"] is None
     assert repository.get_event(fresh_event)["clip_path"] is not None
+    assert repository.get_event(fresh_event)["spectrogram_path"] is not None
 
 
 def test_prepare_for_clip_returns_false_when_free_space_reserve_cannot_be_met(

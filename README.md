@@ -17,6 +17,7 @@ Lekki projekt do 24/7 monitoringu dzwiekow na balkonie na Raspberry Pi 3 B+ z US
   - `street_background`
 - cache'uje podobne klipy w SQLite, zeby nie przepalac CPU na wielokrotnym rozpoznawaniu bardzo podobnych zdarzen i zeby przygotowac grunt pod przyszly reuse dla BirdNET / zewnetrznych API
 - zapisuje interwaly halasu, zdarzenia, clipy i decyzje klasyfikatora do SQLite
+- generuje statyczny podglad widma czestotliwosci jako JPG przy zapisie zdarzenia i pokazuje go w szczegolach eventu
 - rotuje stare clipy WAV po wieku i rozmiarze oraz pilnuje minimalnego zapasu wolnego miejsca na dysku
 - udostepnia panel WWW z dashboardem, szczegolami zdarzen i odsluchem clipow
 - wystawia endpoint zdrowia `GET /health`
@@ -190,7 +191,7 @@ SKIP_AUDIO=1 ./scripts/smoke_test.sh configs/config.yaml
 - `storage.clip_max_megabytes` ogranicza laczny rozmiar `data/clips/`
 - `storage.clip_max_age_days` kasuje stare clipy po wieku
 - `storage.min_free_disk_megabytes` trzyma rezerwe wolnego miejsca na filesystemie
-- przy retencji usuwane sa tylko pliki WAV i ich metadane; eventy, statystyki i decyzje klasyfikatora zostaja w SQLite
+- przy retencji usuwane sa pliki WAV i odpowiadajace im JPG z widmem oraz ich metadane; eventy, statystyki i decyzje klasyfikatora zostaja w SQLite
 - jesli limitu nie da sie spelnic nawet po cleanupie, nowy clip nie zostanie zapisany, ale event nadal trafi do bazy
 
 ## Zbieranie probek do dalszego ulepszania

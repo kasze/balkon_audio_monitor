@@ -111,7 +111,7 @@ class AudioPipeline:
         decision = outcome.decision
         clip = None
         if self.config.storage.keep_clips:
-            estimated_clip_bytes = self.clip_store.estimate_wav_size(completed.clip_samples.size)
+            estimated_clip_bytes = self.clip_store.estimate_total_size(completed.clip_samples.size)
             if self.retention.prepare_for_clip(estimated_clip_bytes):
                 try:
                     clip = self.clip_store.save(completed)

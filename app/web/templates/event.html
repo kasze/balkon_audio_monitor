@@ -16,6 +16,15 @@
     {% endif %}
   </section>
 
+  <section class="card">
+    <h3>Widmo czestotliwosci</h3>
+    {% if event.spectrogram_path %}
+      <img class="spectrogram-image" src="{{ url_for('spectrogram_image', event_id=event.id) }}" alt="Widmo czestotliwosci zdarzenia {{ event.id }}">
+    {% else %}
+      <p>Brak podgladu widma lub obraz zostal usuniety przez retencje.</p>
+    {% endif %}
+  </section>
+
   <section class="grid two">
     <article class="card">
       <h3>Podsumowanie cech</h3>

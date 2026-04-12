@@ -71,5 +71,7 @@ def test_offline_pipeline_persists_event_and_clip(tmp_path: Path) -> None:
     dashboard = repository.get_dashboard(event["started_at"][:10], 10)
     assert event["category"] in {"ambulance", "police", "fire_truck", "street_background"}
     assert event["clip_path"] is not None
+    assert event["spectrogram_path"] is not None
     assert Path(event["clip_path"]).exists()
+    assert Path(event["spectrogram_path"]).exists()
     assert dashboard["recent_events"]

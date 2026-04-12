@@ -122,14 +122,18 @@ class ClipRetentionManager:
         return shutil.disk_usage(path)
 
     def _delete_clip(self, clip: StoredClip) -> int:
-        reclaimed_bytes = clip.byte_size
-        try:
-            if clip.path.exists():
-                reclaimed_bytes = clip.path.stat().st_size
-                clip.path.unlink()
-        except OSError as exc:
-            LOGGER.warning("Failed to remove clip %s: %s", clip.path, exc)
-            return 0
+        reclaimed_bytes = 0
+        paths = [clip.path]
+        if clip.spectrogram_path is not None:
+            paths.append(clip.spectrogram_path)
+        for path in paths:
+            try:
+                if path.exists():
+                    reclaimed_bytes += path.stat().st_size
+                    path.unlink()
+            except OSError as exc:
+                LOGGER.warning("Failed to remove artifact %s: %s", path, exc)
+                return 0
 
         self.repository.delete_clip(clip.clip_id)
         self._prune_empty_directories(clip.path.parent)

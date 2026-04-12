@@ -48,9 +48,16 @@ def create_app(repository: SQLiteRepository, status: RuntimeStatus, config: AppC
     @app.get("/clips/<int:event_id>")
     def clip_audio(event_id: int):
         event = repository.get_event(event_id)
-        if event is None or not event.get("clip_path"):
+        if event is None or not event.get("clip_path") or not Path(event["clip_path"]).exists():
             abort(404)
         return send_file(Path(event["clip_path"]))
+
+    @app.get("/spectrograms/<int:event_id>")
+    def spectrogram_image(event_id: int):
+        event = repository.get_event(event_id)
+        if event is None or not event.get("spectrogram_path") or not Path(event["spectrogram_path"]).exists():
+            abort(404)
+        return send_file(Path(event["spectrogram_path"]))
 
     @app.get("/health")
     def health():

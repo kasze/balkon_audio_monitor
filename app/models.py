@@ -86,10 +86,12 @@ class CompletedEvent:
 @dataclass(slots=True)
 class ClipMetadata:
     path: Path
+    spectrogram_path: Path | None
     sample_rate: int
     channels: int
     duration_seconds: float
     byte_size: int
+    spectrogram_byte_size: int
     sha1: str
 
 
@@ -97,7 +99,9 @@ class ClipMetadata:
 class StoredClip:
     clip_id: int
     path: Path
+    spectrogram_path: Path | None
     byte_size: int
+    spectrogram_byte_size: int
     created_at: str
 
 
@@ -115,6 +119,7 @@ class PersistedEvent:
     event_id: int
     category: str
     clip_path: str | None
+    spectrogram_path: str | None
 
 
 @dataclass(slots=True)

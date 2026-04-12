@@ -166,6 +166,16 @@ audio {
   margin-top: 12px;
 }
 
+.spectrogram-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #0d1210;
+}
+
 .decision-list {
   display: grid;
   gap: 16px;
