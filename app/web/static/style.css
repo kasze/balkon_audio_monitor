@@ -17,8 +17,10 @@ body {
   font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", serif;
   color: var(--ink);
   background:
-    radial-gradient(circle at top right, rgba(30, 111, 92, 0.12), transparent 30%),
-    linear-gradient(180deg, #f8f3ea 0%, var(--bg) 100%);
+    linear-gradient(180deg, rgba(248, 243, 234, 0.72), rgba(243, 239, 231, 0.82)),
+    radial-gradient(circle at top left, rgba(255, 235, 186, 0.46), transparent 28%),
+    linear-gradient(180deg, rgba(8, 15, 18, 0.08), rgba(8, 15, 18, 0.24)),
+    url("/static/tlo.jpg") center center / cover fixed no-repeat;
 }
 
 a {
@@ -65,11 +67,12 @@ main {
 }
 
 .card {
-  background: var(--panel);
+  background: rgba(255, 253, 248, 0.86);
   border: 1px solid var(--line);
   border-radius: 18px;
   padding: 20px;
-  box-shadow: 0 12px 35px rgba(21, 33, 29, 0.06);
+  box-shadow: 0 14px 40px rgba(21, 33, 29, 0.14);
+  backdrop-filter: blur(10px);
 }
 
 .metric h2 {
@@ -79,7 +82,7 @@ main {
 
 .status-card {
   min-width: 280px;
-  background: rgba(255, 253, 248, 0.72);
+  background: rgba(255, 253, 248, 0.8);
   backdrop-filter: blur(12px);
   border: 1px solid var(--line);
   border-radius: 18px;
@@ -130,7 +133,7 @@ main {
   border: 1px solid var(--line);
   border-radius: 16px;
   padding: 12px;
-  background: linear-gradient(180deg, rgba(30, 111, 92, 0.06), transparent);
+  background: linear-gradient(180deg, rgba(255, 253, 248, 0.5), rgba(30, 111, 92, 0.05));
 }
 
 .chart-card {
