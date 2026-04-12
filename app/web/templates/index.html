@@ -3,12 +3,12 @@
 {% block content %}
   <section class="grid two">
     <article class="card metric">
-      <p class="label">Dzien</p>
+      <p class="label">Dzień</p>
       <h2>{{ day }}</h2>
-      <p>Zdarzenia dzis: {{ dashboard.summary.event_count }}</p>
+      <p>Zdarzenia dziś: {{ dashboard.summary.event_count }}</p>
     </article>
     <article class="card metric">
-      <p class="label">Poziom tla</p>
+      <p class="label">Poziom tła</p>
       <h2>
         {% if dashboard.summary.avg_dbfs is not none %}
           {{ '%.1f'|format(dashboard.summary.avg_dbfs) }} dBFS
@@ -20,7 +20,7 @@
         {% if dashboard.summary.max_dbfs is not none %}
           Maksimum: {{ '%.1f'|format(dashboard.summary.max_dbfs) }} dBFS
         {% else %}
-          Oczekiwanie na pierwszy interwal
+          Oczekiwanie na pierwszy interwał
         {% endif %}
       </p>
     </article>
@@ -28,7 +28,7 @@
 
   <section class="grid two">
     <article class="card">
-      <h3>Wykres halasu (srednia godzinowa)</h3>
+      <h3>Wykres hałasu (średnia godzinowa)</h3>
       {% if chart %}
         <div class="chart-wrap">
           <svg viewBox="0 0 {{ chart.width }} {{ chart.height }}" class="chart">
@@ -61,7 +61,7 @@
           {% endfor %}
         </ul>
       {% else %}
-        <p>Brak zdarzen dla biezacej doby.</p>
+        <p>Brak zdarzeń dla bieżącej doby.</p>
       {% endif %}
     </article>
   </section>
@@ -77,7 +77,7 @@
             <th>Kategoria</th>
             <th>Czas</th>
             <th>Pik</th>
-            <th>Pewnosc</th>
+            <th>Pewność</th>
           </tr>
         </thead>
         <tbody>
@@ -94,7 +94,7 @@
         </tbody>
       </table>
     {% else %}
-      <p>Brak zapisanych zdarzen.</p>
+      <p>Brak zapisanych zdarzeń.</p>
     {% endif %}
   </section>
 {% endblock %}

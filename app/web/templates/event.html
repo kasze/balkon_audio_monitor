@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Event {{ event.id }}{% endblock %}
+{% block title %}Zdarzenie {{ event.id }}{% endblock %}
 {% block content %}
   <section class="card">
     <h2>Zdarzenie #{{ event.id }}</h2>
@@ -8,20 +8,20 @@
     <p><strong>Koniec:</strong> {{ event.ended_at }}</p>
     <p><strong>Czas:</strong> {{ '%.1f'|format(event.duration_seconds) }} s</p>
     <p><strong>Pewność:</strong> {{ '%.2f'|format(event.confidence) }}</p>
-    <p><strong>Peak:</strong> {{ '%.1f'|format(event.peak_dbfs) }} dBFS</p>
+    <p><strong>Szczyt:</strong> {{ '%.1f'|format(event.peak_dbfs) }} dBFS</p>
     {% if event.clip_path %}
       <audio controls preload="none" src="{{ url_for('clip_audio', event_id=event.id) }}"></audio>
     {% else %}
-      <p>Brak clipu audio lub clip zostal usuniety przez retencje.</p>
+      <p>Brak klipu audio lub klip został usunięty przez retencję.</p>
     {% endif %}
   </section>
 
   <section class="card">
-    <h3>Widmo czestotliwosci</h3>
+    <h3>Widmo częstotliwości</h3>
     {% if event.spectrogram_path %}
-      <img class="spectrogram-image" src="{{ url_for('spectrogram_image', event_id=event.id) }}" alt="Widmo czestotliwosci zdarzenia {{ event.id }}">
+      <img class="spectrogram-image" src="{{ url_for('spectrogram_image', event_id=event.id) }}" alt="Widmo częstotliwości zdarzenia {{ event.id }}">
     {% else %}
-      <p>Brak podgladu widma lub obraz zostal usuniety przez retencje.</p>
+      <p>Brak podglądu widma lub obraz został usunięty przez retencję.</p>
     {% endif %}
   </section>
 
@@ -29,11 +29,11 @@
     <article class="card">
       <h3>Podsumowanie cech</h3>
       <ul class="plain-list">
-        <li><span>Srednie centrum widma</span><strong>{{ '%.1f'|format(event.summary.mean_centroid_hz) }} Hz</strong></li>
-        <li><span>Srednia dominanta</span><strong>{{ '%.1f'|format(event.summary.dominant_freq_hz) }} Hz</strong></li>
+        <li><span>Średnie centrum widma</span><strong>{{ '%.1f'|format(event.summary.mean_centroid_hz) }} Hz</strong></li>
+        <li><span>Średnia dominanta</span><strong>{{ '%.1f'|format(event.summary.dominant_freq_hz) }} Hz</strong></li>
         <li><span>Zakres dominanty</span><strong>{{ '%.1f'|format(event.summary.dominant_span_hz) }} Hz</strong></li>
         <li><span>Modulacja RMS</span><strong>{{ '%.2f'|format(event.summary.rms_modulation_depth) }}</strong></li>
-        <li><span>Dominujaca modulacja</span><strong>{{ '%.2f'|format(event.summary.dominant_modulation_hz) }} Hz</strong></li>
+        <li><span>Dominująca modulacja</span><strong>{{ '%.2f'|format(event.summary.dominant_modulation_hz) }} Hz</strong></li>
       </ul>
     </article>
 
@@ -50,24 +50,24 @@
                   <strong>{{ category_labels.get(decision.category, decision.category) }}</strong>
                 </div>
                 <div>
-                  <p class="label">Pewnosc</p>
+                  <p class="label">Pewność</p>
                   <strong>{{ '%.2f'|format(decision.confidence) }}</strong>
                 </div>
               </div>
 
               <div class="detail-grid">
-                <p><strong>Sciezka identyfikacji:</strong> {{ trace.source_label }}</p>
+                <p><strong>Ścieżka identyfikacji:</strong> {{ trace.source_label }}</p>
                 <p><strong>Klasyfikator:</strong> {{ trace.classifier_name }} v{{ trace.classifier_version }}</p>
-                <p><strong>Zewnetrzne API:</strong> {{ trace.external_api_name if trace.used_external_api else 'nie' }}</p>
+                <p><strong>Zewnętrzne API:</strong> {{ trace.external_api_name if trace.used_external_api else 'nie' }}</p>
                 <p><strong>Cache reuse:</strong> {{ 'tak' if trace.cache_hit else 'nie' }}</p>
                 {% if trace.cache_hit and trace.cache_similarity is not none %}
-                  <p><strong>Podobienstwo cache:</strong> {{ '%.4f'|format(trace.cache_similarity) }}</p>
+                  <p><strong>Podobieństwo cache:</strong> {{ '%.4f'|format(trace.cache_similarity) }}</p>
                 {% endif %}
                 {% if trace.cache_hit and trace.cache_source_event_id %}
                   <p><strong>Event z cache:</strong> <a href="{{ url_for('event_details', event_id=trace.cache_source_event_id) }}">#{{ trace.cache_source_event_id }}</a></p>
                 {% endif %}
                 {% if trace.fallback_reason %}
-                  <p><strong>Powod fallbacku:</strong> {{ trace.fallback_reason }}</p>
+                  <p><strong>Powód fallbacku:</strong> {{ trace.fallback_reason }}</p>
                 {% endif %}
               </div>
 

@@ -6,10 +6,10 @@ from app.models import ClassifierDecision, EventSummary
 CATEGORY_LABELS = {
     "ambulance": "Ambulance / syrena karetki",
     "police": "Policja / syrena policyjna",
-    "fire_truck": "Straz pozarna / syrena strazacka",
+    "fire_truck": "Straż pożarna / syrena strażacka",
     "airplane": "Samolot",
-    "helicopter": "Smiglowiec",
-    "street_background": "Nieokreslony halas uliczny / tlo",
+    "helicopter": "Śmigłowiec",
+    "street_background": "Nieokreślony hałas uliczny / tło",
 }
 
 
@@ -94,4 +94,3 @@ class HeuristicEventClassifier:
                 "dominant_span_hz": summary.dominant_span_hz,
             },
         )
-

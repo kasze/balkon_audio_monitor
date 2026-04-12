@@ -137,7 +137,7 @@ def _describe_classifier_decision(decision: dict[str, object]) -> dict[str, obje
 
     if used_external_api:
         source = "external_api"
-        source_label = f"Zewnetrzne API: {external_api_name or 'nieznane'}"
+        source_label = f"Zewnętrzne API: {external_api_name or 'nieznane'}"
     elif cache_hit:
         source = "cache_reuse"
         source_label = "Reuse z lokalnego cache"
