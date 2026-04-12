@@ -23,6 +23,9 @@ class RuntimeStatus:
         self._data = {
             "worker_state": "idle",
             "audio_available": False,
+            "audio_device": None,
+            "audio_device_mode": None,
+            "audio_device_name": None,
             "last_frame_at": None,
             "last_error": None,
             "events_written": 0,

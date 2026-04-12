@@ -58,6 +58,7 @@ sudo systemctl restart audio-monitor
 
 ## Debugging
 
+- `detect-audio` pokazuje aktualny wybor inputu przy auto-detekcji
 - `check-audio` diagnozuje ALSA i brak wejscia
 - `run-live` pozwala izolowac pipeline bez weba
 - `web` pozwala sprawdzic panel bez live capture
@@ -71,4 +72,3 @@ sudo systemctl restart audio-monitor
 - czy clipy zapisuja sie do `data/clips/`
 - czy `GET /health` odpowiada
 - czy restart systemd przywraca usluge po bledzie
-

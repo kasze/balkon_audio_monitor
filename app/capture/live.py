@@ -20,12 +20,14 @@ class LiveAudioSource:
         frame_duration_seconds: float,
         arecord_binary: str = "arecord",
         arecord_device: str | None = None,
+        source_name: str | None = None,
         channels: int = 1,
     ) -> None:
         self.sample_rate = sample_rate
         self.frame_duration_seconds = frame_duration_seconds
         self.arecord_binary = arecord_binary
         self.arecord_device = arecord_device
+        self.source_name = source_name or arecord_device or "live"
         self.channels = channels
         self._process: subprocess.Popen[bytes] | None = None
 
@@ -57,16 +59,17 @@ class LiveAudioSource:
             stderr=subprocess.PIPE,
             bufsize=bytes_per_frame * 4,
         )
+        process = self._process
 
-        if self._process.stdout is None or self._process.stderr is None:
+        if process.stdout is None or process.stderr is None:
             raise AudioCaptureError("Failed to open arecord pipes.")
 
         try:
             while True:
                 started_at = datetime.now(tz=UTC)
-                chunk = self._process.stdout.read(bytes_per_frame)
+                chunk = process.stdout.read(bytes_per_frame)
                 if len(chunk) != bytes_per_frame:
-                    stderr_output = self._process.stderr.read().decode("utf-8", errors="replace").strip()
+                    stderr_output = process.stderr.read().decode("utf-8", errors="replace").strip()
                     raise AudioCaptureError(
                         "Live audio source stopped unexpectedly."
                         + (f" arecord output: {stderr_output}" if stderr_output else "")
@@ -78,7 +81,7 @@ class LiveAudioSource:
                     samples=samples,
                     started_at=started_at,
                     duration_seconds=self.frame_duration_seconds,
-                    source_name=self.arecord_device or "live",
+                    source_name=self.source_name,
                 )
         finally:
             self.close()
@@ -94,4 +97,3 @@ class LiveAudioSource:
                 process.wait(timeout=2)
             except subprocess.TimeoutExpired:
                 process.kill()
-

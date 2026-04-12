@@ -3,8 +3,9 @@
 - Raspberry Pi OS Lite uruchamia sie headless i odpowiada po SSH
 - `arecord -l` widzi karte USB audio
 - mikrofon jest fizycznie podpiety do wejscia `mic-in`
-- `configs/config.yaml` ma poprawne `audio.arecord_device`
+- `configs/config.yaml` ma poprawne `audio.arecord_device` albo puste pole dla auto-detekcji
 - `.venv` istnieje i `pip install -r requirements.txt` zakonczyl sie sukcesem
+- `python -m app.main detect-audio` pokazuje urzadzenie USB audio jako wybrane
 - `python -m app.main check-audio` zwraca przechwycone bajty
 - `python -m app.main init-db` utworzyl `data/db/audio_monitor.sqlite3`
 - `scripts/smoke_test.sh` przechodzi
@@ -12,4 +13,3 @@
 - `journalctl -u audio-monitor -n 100` nie pokazuje petli bledow audio
 - panel WWW odpowiada z innego urzadzenia w sieci domowej
 - po restarcie Raspberry Pi usluga wraca automatycznie
-

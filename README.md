@@ -94,13 +94,16 @@ ffmpeg -i input.wav -ar 16000 -ac 1 -sample_fmt s16 sample_audio/output.wav
 arecord -l
 ```
 
-2. Ustaw `audio.arecord_device` w [configs/config.yaml.example](/Users/kasze/audio_monitor/configs/config.yaml.example) lub skopiowanej `configs/config.yaml`, np. `hw:1,0`.
+2. Domyslnie zostaw `audio.arecord_device` puste. Aplikacja sama wybierze pierwsze sensowne wejscie capture, preferujac USB i uzywajac `plughw:X,Y`. Jesli chcesz wymusic konkretne urzadzenie, ustaw je recznie w [configs/config.yaml.example](/Users/kasze/audio_monitor/configs/config.yaml.example), np. `plughw:2,0`.
 
 3. Probe input:
 
 ```bash
+.venv/bin/python -m app.main --config configs/config.yaml detect-audio
 .venv/bin/python -m app.main --config configs/config.yaml check-audio
 ```
+
+Jesli usluga juz trzyma input, `check-audio` zwroci komunikat o zajetym urzadzeniu zamiast falszywego bledu konfiguracji.
 
 4. Uruchom bez weba:
 
@@ -146,6 +149,12 @@ Logi z laptopa:
 ./scripts/logs.sh pi@raspberrypi.local
 ```
 
+Auto-detekcja inputu:
+
+```bash
+.venv/bin/python -m app.main --config configs/config.yaml detect-audio
+```
+
 Restart:
 
 ```bash
@@ -183,4 +192,3 @@ SKIP_AUDIO=1 ./scripts/smoke_test.sh configs/config.yaml
 ## Kolejny krok po MVP
 
 Najczystsza sciezka rozwoju to dodanie drugiego klasyfikatora za interfejsem z `app/classify`, np. lekkiego TFLite uruchamianego tylko na zakonczonych eventach zamiast na calym strumieniu.
-

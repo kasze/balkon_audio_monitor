@@ -72,7 +72,7 @@ nano configs/config.yaml
 ```
 
 Ustaw przynajmniej:
-- `audio.arecord_device`
+- `audio.arecord_device`, tylko jesli chcesz recznie wymusic urzadzenie; puste pole wlacza auto-detekcje USB capture
 - `web.port`, jesli 8080 nie pasuje
 - sciezki storage, jesli chcesz inne niz domyslne
 
@@ -80,8 +80,8 @@ Ustaw przynajmniej:
 
 ```bash
 cd /opt/audio-monitor
+.venv/bin/python -m app.main --config configs/config.yaml detect-audio
 .venv/bin/python -m app.main --config configs/config.yaml check-audio
 SKIP_AUDIO=0 ./scripts/smoke_test.sh configs/config.yaml
 curl http://127.0.0.1:8080/health
 ```
-

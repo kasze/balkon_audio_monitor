@@ -3,7 +3,7 @@ audio:
   channels: 1
   frame_duration_seconds: 0.5
   arecord_binary: arecord
-  arecord_device: "hw:1,0"
+  arecord_device:
   retry_backoff_seconds: 5.0
 
 detection:
@@ -36,4 +36,3 @@ web:
 
 logging:
   level: INFO
-

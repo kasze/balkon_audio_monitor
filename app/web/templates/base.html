@@ -17,6 +17,7 @@
           {{ status.worker_state if status and status.worker_state else 'idle' }}
         </span>
         <p>Audio: {{ 'OK' if status and status.audio_available else 'brak sygnalu' }}</p>
+        <p>Device: {{ status.audio_device if status and status.audio_device else 'brak' }}</p>
         <p>Ostatnia ramka: {{ status.last_frame_at if status and status.last_frame_at else 'brak' }}</p>
       </div>
     </header>
@@ -25,4 +26,3 @@
     </main>
   </body>
 </html>
-
