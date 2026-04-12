@@ -5,6 +5,8 @@ TARGET="${1:?usage: ./scripts/deploy.sh user@host [/opt/audio-monitor]}"
 REMOTE_DIR="${2:-/opt/audio-monitor}"
 REMOTE_USER="${TARGET%@*}"
 
+ssh -tt "${TARGET}" "sudo mkdir -p ${REMOTE_DIR} && sudo chown ${REMOTE_USER}:${REMOTE_USER} ${REMOTE_DIR}"
+
 rsync -az --delete \
   --exclude ".git" \
   --exclude ".venv" \
