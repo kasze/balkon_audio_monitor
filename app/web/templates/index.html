@@ -32,15 +32,15 @@
       <div class="chart-wrap">
         <canvas
           class="chart bam-chart"
-          data-labels='{{ recent_chart.labels|tojson }}'
-          data-values='{{ recent_chart.values|tojson }}'
-          data-min='{{ recent_chart.min_value }}'
-          data-max='{{ recent_chart.max_value }}'
+          data-labels='{{ recent_chart["labels"]|tojson }}'
+          data-values='{{ recent_chart["values"]|tojson }}'
+          data-min='{{ recent_chart["min_value"] }}'
+          data-max='{{ recent_chart["max_value"] }}'
           aria-label="Wykres hałasu z ostatniej godziny"
         ></canvas>
         <div class="chart-legend">
-          <span>{{ recent_chart.max_value }} dBFS</span>
-          <span>{{ recent_chart.min_value }} dBFS</span>
+          <span>{{ recent_chart["max_value"] }} dBFS</span>
+          <span>{{ recent_chart["min_value"] }} dBFS</span>
         </div>
       </div>
     {% else %}
@@ -54,15 +54,15 @@
       <div class="chart-wrap">
         <canvas
           class="chart bam-chart"
-          data-labels='{{ chart.labels|tojson }}'
-          data-values='{{ chart.values|tojson }}'
-          data-min='{{ chart.min_value }}'
-          data-max='{{ chart.max_value }}'
+          data-labels='{{ chart["labels"]|tojson }}'
+          data-values='{{ chart["values"]|tojson }}'
+          data-min='{{ chart["min_value"] }}'
+          data-max='{{ chart["max_value"] }}'
           aria-label="Wykres godzinowego hałasu"
         ></canvas>
         <div class="chart-legend">
-          <span>{{ chart.max_value }} dBFS</span>
-          <span>{{ chart.min_value }} dBFS</span>
+          <span>{{ chart["max_value"] }} dBFS</span>
+          <span>{{ chart["min_value"] }} dBFS</span>
         </div>
       </div>
     {% else %}
