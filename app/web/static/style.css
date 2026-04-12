@@ -86,12 +86,16 @@ main {
   padding: 16px 18px;
 }
 
+.status-card p {
+  margin: 0;
+}
+
 .status-pill {
   display: inline-block;
   padding: 6px 10px;
   border-radius: 999px;
   background: #d8ddd8;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
   font-size: 0.85rem;
 }
 
@@ -102,6 +106,23 @@ main {
 .status-pill.degraded,
 .status-pill.error {
   background: #f7d9cd;
+}
+
+.status-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 14px;
+  font-size: 0.95rem;
+}
+
+.status-metrics strong,
+.status-last-frame strong {
+  margin-right: 6px;
+}
+
+.status-last-frame {
+  margin-top: 8px;
+  font-size: 0.95rem;
 }
 
 .chart-wrap {
@@ -224,6 +245,10 @@ audio {
   .status-card {
     width: 100%;
     min-width: 0;
+  }
+
+  .status-metrics {
+    grid-template-columns: 1fr;
   }
 
   .decision-header {
