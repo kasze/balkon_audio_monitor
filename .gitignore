@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+*.pyc
+data/db/*.sqlite3
+data/clips/**/*.wav
+data/clips/*.wav
+*.log
+configs/local.yaml
+

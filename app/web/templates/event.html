@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Event {{ event.id }}{% endblock %}
+{% block content %}
+  <section class="card">
+    <h2>Zdarzenie #{{ event.id }}</h2>
+    <p><strong>Kategoria:</strong> {{ category_labels.get(event.category, event.category) }}</p>
+    <p><strong>Start:</strong> {{ event.started_at }}</p>
+    <p><strong>Koniec:</strong> {{ event.ended_at }}</p>
+    <p><strong>Czas:</strong> {{ '%.1f'|format(event.duration_seconds) }} s</p>
+    <p><strong>Pewność:</strong> {{ '%.2f'|format(event.confidence) }}</p>
+    <p><strong>Peak:</strong> {{ '%.1f'|format(event.peak_dbfs) }} dBFS</p>
+    {% if event.clip_path %}
+      <audio controls preload="none" src="{{ url_for('clip_audio', event_id=event.id) }}"></audio>
+    {% else %}
+      <p>Brak clipu audio.</p>
+    {% endif %}
+  </section>
+
+  <section class="grid two">
+    <article class="card">
+      <h3>Podsumowanie cech</h3>
+      <ul class="plain-list">
+        <li><span>Srednie centrum widma</span><strong>{{ '%.1f'|format(event.summary.mean_centroid_hz) }} Hz</strong></li>
+        <li><span>Srednia dominanta</span><strong>{{ '%.1f'|format(event.summary.dominant_freq_hz) }} Hz</strong></li>
+        <li><span>Zakres dominanty</span><strong>{{ '%.1f'|format(event.summary.dominant_span_hz) }} Hz</strong></li>
+        <li><span>Modulacja RMS</span><strong>{{ '%.2f'|format(event.summary.rms_modulation_depth) }}</strong></li>
+        <li><span>Dominujaca modulacja</span><strong>{{ '%.2f'|format(event.summary.dominant_modulation_hz) }} Hz</strong></li>
+      </ul>
+    </article>
+
+    <article class="card">
+      <h3>Decyzje klasyfikatora</h3>
+      {% if event.decisions %}
+        <ul class="plain-list">
+          {% for decision in event.decisions %}
+            <li>
+              <span>{{ decision.classifier_name }}: {{ category_labels.get(decision.category, decision.category) }}</span>
+              <strong>{{ '%.2f'|format(decision.confidence) }}</strong>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p>Brak zapisanych decyzji.</p>
+      {% endif %}
+    </article>
+  </section>
+{% endblock %}
+

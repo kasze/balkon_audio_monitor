@@ -1,0 +1,39 @@
+audio:
+  sample_rate: 16000
+  channels: 1
+  frame_duration_seconds: 0.5
+  arecord_binary: arecord
+  arecord_device:
+  retry_backoff_seconds: 5.0
+
+detection:
+  initial_noise_floor_dbfs: -58.0
+  activation_margin_db: 9.0
+  release_margin_db: 4.0
+  min_event_dbfs: -48.0
+  min_active_frames: 2
+  max_inactive_frames: 3
+  noise_floor_alpha: 0.04
+
+aggregation:
+  noise_interval_seconds: 5.0
+  pre_roll_seconds: 1.0
+  post_roll_seconds: 1.0
+  min_event_seconds: 1.0
+  max_clip_seconds: 30.0
+  max_event_seconds: 90.0
+
+storage:
+  database_path: data/db/audio_monitor.sqlite3
+  clip_dir: data/clips
+  keep_clips: true
+
+web:
+  host: 0.0.0.0
+  port: 8080
+  recent_events_limit: 20
+  dashboard_history_hours: 24
+
+logging:
+  level: INFO
+

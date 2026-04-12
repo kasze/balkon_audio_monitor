@@ -1,0 +1,21 @@
+[Unit]
+Description=Balcony Audio Monitor
+After=network.target sound.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/opt/audio-monitor
+Environment=AUDIO_MONITOR_CONFIG=/opt/audio-monitor/configs/config.yaml
+Environment=PYTHONUNBUFFERED=1
+ExecStartPre=/bin/mkdir -p /opt/audio-monitor/data/db /opt/audio-monitor/data/clips
+ExecStart=/opt/audio-monitor/.venv/bin/python -m app.main --config /opt/audio-monitor/configs/config.yaml service
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

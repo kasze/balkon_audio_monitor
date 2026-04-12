@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+  <section class="grid two">
+    <article class="card metric">
+      <p class="label">Dzien</p>
+      <h2>{{ day }}</h2>
+      <p>Zdarzenia dzis: {{ dashboard.summary.event_count }}</p>
+    </article>
+    <article class="card metric">
+      <p class="label">Poziom tla</p>
+      <h2>
+        {% if dashboard.summary.avg_dbfs is not none %}
+          {{ '%.1f'|format(dashboard.summary.avg_dbfs) }} dBFS
+        {% else %}
+          brak danych
+        {% endif %}
+      </h2>
+      <p>
+        {% if dashboard.summary.max_dbfs is not none %}
+          Maksimum: {{ '%.1f'|format(dashboard.summary.max_dbfs) }} dBFS
+        {% else %}
+          Oczekiwanie na pierwszy interwal
+        {% endif %}
+      </p>
+    </article>
+  </section>
+
+  <section class="grid two">
+    <article class="card">
+      <h3>Wykres halasu (srednia godzinowa)</h3>
+      {% if chart %}
+        <div class="chart-wrap">
+          <svg viewBox="0 0 {{ chart.width }} {{ chart.height }}" class="chart">
+            <polyline fill="none" stroke="currentColor" stroke-width="3" points="{{ chart.polyline }}"></polyline>
+          </svg>
+          <div class="chart-legend">
+            <span>{{ chart.max_value }} dBFS</span>
+            <span>{{ chart.min_value }} dBFS</span>
+          </div>
+        </div>
+        <div class="hour-labels">
+          {% for label in chart.labels %}
+            <span>{{ label }}</span>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p>Brak danych godzinowych.</p>
+      {% endif %}
+    </article>
+
+    <article class="card">
+      <h3>Zdarzenia wg kategorii</h3>
+      {% if dashboard.categories %}
+        <ul class="plain-list">
+          {% for row in dashboard.categories %}
+            <li>
+              <span>{{ category_labels.get(row.category, row.category) }}</span>
+              <strong>{{ row.total }}</strong>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p>Brak zdarzen dla biezacej doby.</p>
+      {% endif %}
+    </article>
+  </section>
+
+  <section class="card">
+    <h3>Ostatnie zdarzenia</h3>
+    {% if dashboard.recent_events %}
+      <table class="events-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Start</th>
+            <th>Kategoria</th>
+            <th>Czas</th>
+            <th>Pik</th>
+            <th>Pewnosc</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in dashboard.recent_events %}
+            <tr>
+              <td><a href="{{ url_for('event_details', event_id=row.id) }}">#{{ row.id }}</a></td>
+              <td>{{ row.started_at }}</td>
+              <td>{{ category_labels.get(row.category, row.category) }}</td>
+              <td>{{ '%.1f'|format(row.duration_seconds) }} s</td>
+              <td>{{ '%.1f'|format(row.peak_dbfs) }} dBFS</td>
+              <td>{{ '%.2f'|format(row.confidence) }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p>Brak zapisanych zdarzen.</p>
+    {% endif %}
+  </section>
+{% endblock %}
+

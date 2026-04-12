@@ -1,0 +1,16 @@
+# Example ALSA config for a USB audio adapter on Raspberry Pi.
+# Check the real card/device first:
+#   arecord -l
+#
+# Then update the hw:CARD/DEV values below.
+
+pcm.usbmic {
+  type plug
+  slave.pcm "hw:1,0"
+}
+
+ctl.usbmic {
+  type hw
+  card 1
+}
+

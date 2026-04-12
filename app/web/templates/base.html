@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Audio Monitor{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  </head>
+  <body>
+    <header class="page-header">
+      <div>
+        <p class="eyebrow">Raspberry Pi 3 B+ / balcony audio monitor</p>
+        <h1><a href="{{ url_for('index') }}">Audio Monitor</a></h1>
+      </div>
+      <div class="status-card">
+        <span class="status-pill {{ status.worker_state if status and status.worker_state else 'idle' }}">
+          {{ status.worker_state if status and status.worker_state else 'idle' }}
+        </span>
+        <p>Audio: {{ 'OK' if status and status.audio_available else 'brak sygnalu' }}</p>
+        <p>Ostatnia ramka: {{ status.last_frame_at if status and status.last_frame_at else 'brak' }}</p>
+      </div>
+    </header>
+    <main>
+      {% block content %}{% endblock %}
+    </main>
+  </body>
+</html>
+
