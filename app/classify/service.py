@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import io
 import json
 import logging
 import shutil
 import urllib.request
+import uuid
+import wave
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
@@ -22,6 +25,7 @@ from app.storage.database import SQLiteRepository
 from app.classify.heuristics import HeuristicEventClassifier
 
 LOGGER = logging.getLogger(__name__)
+BIRDNET_API_NAME = "BirdNET API"
 
 YAMNET_CATEGORY_WEIGHTS: dict[str, dict[str, float]] = {
     "ambulance": {
@@ -69,12 +73,103 @@ class YAMNetModelOutput:
     top_labels: list[dict[str, float | str]]
 
 
+@dataclass(slots=True)
+class BirdNETPrediction:
+    species_label: str
+    score: float
+    scientific_name: str | None
+    common_name: str
+
+
+class BirdNETClient:
+    def __init__(self, config: ClassifierConfig) -> None:
+        self.config = config
+
+    @property
+    def is_enabled(self) -> bool:
+        return bool(self.config.birdnet_api_url.strip())
+
+    def identify(self, event: CompletedEvent, trigger_labels: list[str], yamnet_decision: ClassifierDecision) -> ClassifierDecision | None:
+        if not self.is_enabled or event.clip_samples.size == 0:
+            return None
+
+        audio_bytes = _build_wav_bytes(event.clip_samples, event.sample_rate)
+        meta = {
+            "locale": self.config.birdnet_locale,
+            "num_results": self.config.birdnet_num_results,
+            "min_conf": self.config.birdnet_min_confidence,
+            "save": False,
+        }
+        boundary = f"----bam-birdnet-{uuid.uuid4().hex}"
+        body = _build_multipart_form_data(
+            boundary,
+            fields={"meta": json.dumps(meta)},
+            file_field_name="audio",
+            filename="event.wav",
+            content_type="audio/wav",
+            file_bytes=audio_bytes,
+        )
+        request = urllib.request.Request(
+            self.config.birdnet_api_url,
+            data=body,
+            headers={
+                "Content-Type": f"multipart/form-data; boundary={boundary}",
+                "User-Agent": "bam/0.1",
+                "Accept": "application/json",
+            },
+        )
+        with urllib.request.urlopen(request, timeout=self.config.birdnet_timeout_seconds) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+
+        if str(payload.get("msg")) != "success":
+            raise RuntimeError(f"BirdNET API returned {payload.get('msg') or 'error'}")
+
+        raw_results = payload.get("results")
+        if not isinstance(raw_results, list) or not raw_results:
+            return None
+
+        predictions = [_parse_birdnet_prediction(item) for item in raw_results]
+        predictions = [item for item in predictions if item is not None]
+        if not predictions:
+            return None
+
+        best = predictions[0]
+        if best.score < self.config.birdnet_min_confidence:
+            return None
+
+        return ClassifierDecision(
+            classifier_name="birdnet_remote",
+            classifier_version="1",
+            category=best.common_name,
+            confidence=best.score,
+            details={
+                **yamnet_decision.details,
+                "used_external_api": True,
+                "external_api_name": BIRDNET_API_NAME,
+                "birdnet_species_label": best.species_label,
+                "birdnet_common_name": best.common_name,
+                "birdnet_scientific_name": best.scientific_name,
+                "birdnet_results": [
+                    {
+                        "species_label": item.species_label,
+                        "common_name": item.common_name,
+                        "scientific_name": item.scientific_name,
+                        "score": item.score,
+                    }
+                    for item in predictions[: self.config.birdnet_num_results]
+                ],
+                "birdnet_trigger_labels": trigger_labels,
+            },
+        )
+
+
 class AppClassifier:
     def __init__(self, config: ClassifierConfig, repository: SQLiteRepository) -> None:
         self.config = config
         self.repository = repository
         self.yamnet = YAMNetClassifier(config)
         self.heuristics = HeuristicEventClassifier()
+        self.birdnet = BirdNETClient(config)
 
     def classify(self, event: CompletedEvent) -> ClassificationOutcome:
         if self.config.backend == "heuristic":
@@ -83,6 +178,15 @@ class AppClassifier:
         signature_hash, signature = compute_audio_signature(event.clip_samples, event.sample_rate)
         try:
             decision = self.yamnet.classify(event)
+            trigger_labels = _extract_bird_trigger_labels(decision, self.config.yamnet_min_category_score)
+            if trigger_labels:
+                try:
+                    birdnet_decision = self.birdnet.identify(event, trigger_labels, decision)
+                except Exception as exc:  # pragma: no cover - network/runtime dependent
+                    LOGGER.warning("BirdNET API lookup failed, keeping YAMNet decision: %s", exc)
+                else:
+                    if birdnet_decision is not None:
+                        decision = birdnet_decision
         except Exception as exc:  # pragma: no cover - exercised on device when runtime/model fails
             LOGGER.warning("YAMNet unavailable, falling back to heuristics: %s", exc)
             decision = self.heuristics.classify(event.summary)
@@ -316,6 +420,112 @@ def compute_audio_signature(samples: np.ndarray, sample_rate: int) -> tuple[str,
     quantized = [round(float(value), 6) for value in combined.tolist()]
     signature_hash = hashlib.sha1(json.dumps(quantized).encode("utf-8")).hexdigest()
     return signature_hash, quantized
+
+
+def _extract_bird_trigger_labels(decision: ClassifierDecision, min_score: float) -> list[str]:
+    details = decision.details if isinstance(decision.details, dict) else {}
+    labels: list[str] = []
+    resolved_label = details.get("resolved_label")
+    resolved_score = details.get("resolved_label_score")
+    if isinstance(resolved_label, str) and _is_bird_yamnet_label(resolved_label):
+        score = float(resolved_score) if isinstance(resolved_score, int | float) else 0.0
+        if score >= min_score:
+            labels.append(resolved_label)
+
+    top_labels = details.get("top_labels")
+    if isinstance(top_labels, list):
+        for item in top_labels:
+            if not isinstance(item, dict):
+                continue
+            label = item.get("label")
+            if not isinstance(label, str) or not _is_bird_yamnet_label(label):
+                continue
+            mean_score = float(item.get("mean_score")) if isinstance(item.get("mean_score"), int | float) else 0.0
+            peak_score = float(item.get("peak_score")) if isinstance(item.get("peak_score"), int | float) else 0.0
+            if max(mean_score, peak_score) >= min_score:
+                labels.append(label)
+
+    deduped: list[str] = []
+    for label in labels:
+        if label not in deduped:
+            deduped.append(label)
+    return deduped
+
+
+def _is_bird_yamnet_label(label: str) -> bool:
+    return "bird" in label.casefold()
+
+
+def _build_wav_bytes(samples: np.ndarray, sample_rate: int) -> bytes:
+    pcm = np.clip(samples.astype(np.float32, copy=False), -1.0, 1.0)
+    pcm_i16 = (pcm * 32767.0).astype("<i2")
+    handle = io.BytesIO()
+    with wave.open(handle, "wb") as wav_handle:
+        wav_handle.setnchannels(1)
+        wav_handle.setsampwidth(2)
+        wav_handle.setframerate(sample_rate)
+        wav_handle.writeframes(pcm_i16.tobytes())
+    return handle.getvalue()
+
+
+def _build_multipart_form_data(
+    boundary: str,
+    *,
+    fields: dict[str, str],
+    file_field_name: str,
+    filename: str,
+    content_type: str,
+    file_bytes: bytes,
+) -> bytes:
+    chunks: list[bytes] = []
+    for name, value in fields.items():
+        chunks.extend(
+            [
+                f"--{boundary}\r\n".encode("utf-8"),
+                f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode("utf-8"),
+                value.encode("utf-8"),
+                b"\r\n",
+            ]
+        )
+    chunks.extend(
+        [
+            f"--{boundary}\r\n".encode("utf-8"),
+            (
+                f'Content-Disposition: form-data; name="{file_field_name}"; filename="{filename}"\r\n'
+                f"Content-Type: {content_type}\r\n\r\n"
+            ).encode("utf-8"),
+            file_bytes,
+            b"\r\n",
+            f"--{boundary}--\r\n".encode("utf-8"),
+        ]
+    )
+    return b"".join(chunks)
+
+
+def _parse_birdnet_prediction(item: object) -> BirdNETPrediction | None:
+    if not isinstance(item, list | tuple) or len(item) < 2:
+        return None
+    species_label = str(item[0]).strip()
+    if not species_label:
+        return None
+    try:
+        score = float(item[1])
+    except (TypeError, ValueError):
+        return None
+    scientific_name, common_name = _split_species_label(species_label)
+    return BirdNETPrediction(
+        species_label=species_label,
+        score=score,
+        scientific_name=scientific_name,
+        common_name=common_name,
+    )
+
+
+def _split_species_label(species_label: str) -> tuple[str | None, str]:
+    if "_" not in species_label:
+        return None, species_label
+    scientific_name, common_name = species_label.split("_", 1)
+    return scientific_name or None, common_name or species_label
 
 
 def cosine_similarity(left: np.ndarray, right: np.ndarray) -> float:

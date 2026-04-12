@@ -39,6 +39,11 @@ classifier:
   yamnet_max_windows: 24
   yamnet_min_category_score: 0.08
   yamnet_top_k: 8
+  birdnet_api_url:
+  birdnet_timeout_seconds: 15.0
+  birdnet_min_confidence: 0.20
+  birdnet_num_results: 5
+  birdnet_locale: pl
 
 storage:
   database_path: data/db/audio_monitor.sqlite3

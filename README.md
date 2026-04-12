@@ -1,146 +1,115 @@
 # Balkon Audio Monitor (BAM)
 
-Lekki projekt do 24/7 monitoringu dzwiekow na balkonie na Raspberry Pi 3 B+ z USB audio i panelem WWW. MVP celowo stawia na stabilnosc, prosty deploy przez SSH/rsync i czytelna architekture, a nie na maksymalna dokladnosc klasyfikacji.
+Aplikacja do ciągłego monitoringu audio na Raspberry Pi z panelem WWW, zapisem zdarzeń i klasyfikacją dźwięków.
 
-## Co robi MVP
+## Wymagania
 
-- przechwytuje audio live przez ALSA `arecord` albo analizuje pliki WAV offline
-- liczy lekkie cechy audio na ramkach 0.5 s
-- wykrywa epizody przez adaptacyjny prog energii z histereza
-- scala sasiednie ramki w jedno zdarzenie
-- klasyfikuje zdarzenia lokalnie przez YAMNet uruchamiany w LiteRT do kategorii:
-  - `ambulance`
-  - `police`
-  - `fire_truck`
-  - `airplane`
-  - `helicopter`
-  - `street_background`
-- cache'uje podobne klipy w SQLite, zeby nie przepalac CPU na wielokrotnym rozpoznawaniu bardzo podobnych zdarzen i zeby przygotowac grunt pod przyszly reuse dla BirdNET / zewnetrznych API
-- zapisuje interwaly halasu, zdarzenia, clipy i decyzje klasyfikatora do SQLite
-- generuje statyczny podglad widma czestotliwosci jako JPG przy zapisie zdarzenia i pokazuje go w szczegolach eventu
-- rotuje stare clipy WAV po wieku i rozmiarze oraz pilnuje minimalnego zapasu wolnego miejsca na dysku
-- udostepnia panel WWW z dashboardem, szczegolami zdarzen i odsluchem clipow
-- wystawia endpoint zdrowia `GET /health`
-- dla odsluchu, widma i klasyfikacji zapisuje krotki focus clip wokol najmocniejszego fragmentu zdarzenia, zeby ograniczyc tlo
+- Raspberry Pi z Raspberry Pi OS
+- karta microSD
+- zasilanie i sieć Wi‑Fi lub Ethernet
+- mikrofon / karta audio USB
+- komputer do przygotowania karty SD i deployu przez SSH
 
-## Dlaczego taka architektura
+## Przygotowanie karty SD
 
-- `arecord` zamiast PortAudio/PyAudio: natywnie pasuje do ALSA i zwykle zachowuje sie stabilniej na headless Raspberry Pi.
-- `numpy` + jedna FFT na ramke: to jest realne dla RPi 3 B+ i wystarcza do MVP.
-- YAMNet idzie lokalnie przez LiteRT, bez chmury i bez quota API. Cache podobienstwa sluzy do oszczedzania CPU teraz i do przyszlego reuse klasyfikacji dla kolejnych modeli/API.
-- Flask + Waitress + server-side HTML: niski narzut RAM/CPU i zero SPA.
-- SQLite: lokalnie, bez zaleznosci od chmury i bez zbednej infrastruktury.
+1. Zainstaluj `Raspberry Pi Imager`.
+2. Wybierz system: `Raspberry Pi OS Lite`.
+3. Wybierz kartę SD.
+4. Wejdź w `Edit Settings` przed nagraniem obrazu.
+5. Ustaw:
+   - hostname, np. `raspberrypi`
+   - włączenie `SSH`
+   - nazwę użytkownika i hasło do SSH
+   - dane Wi‑Fi: SSID, hasło, kraj
+   - strefę czasową i układ klawiatury, jeśli chcesz
+6. Nagraj obraz na kartę.
+7. Włóż kartę do Raspberry Pi i uruchom urządzenie.
 
-## Struktura repo
+Po starcie połącz się:
 
-- `app/` kod aplikacji
-- `tests/` testy jednostkowe i integracyjne
-- `scripts/` skrypty operacyjne i deploy
-- `configs/` konfiguracja YAML i przyklad ALSA
-- `systemd/` jednostka uslugi
-- `docs/` dokumentacja wdrozenia i checklisty
-- `sample_audio/` probki offline i generator demo
+```bash
+ssh pi@raspberrypi.local
+```
 
-## Moduly aplikacji
+albo po IP:
 
-- `app/capture` live capture przez `arecord` oraz pliki WAV
-- `app/features` lekkie cechy audio
-- `app/detect` detekcja epizodow z histereza
-- `app/classify` YAMNet LiteRT, cache podobienstwa i fallback heurystyczny
-- `app/aggregate` laczenie ramek w interwaly halasu i zdarzenia
-- `app/storage` SQLite i clipy WAV
-- `app/web` panel WWW
-- `app/config.py` konfiguracja YAML
-- `app/logging_setup.py` logi do stdout/journald
+```bash
+ssh pi@192.168.x.x
+```
 
-## Szybki start lokalnie
+## Przygotowanie repo lokalnie
+
+W katalogu projektu:
 
 ```bash
 ./scripts/setup_venv.sh .venv
 ./scripts/install_python_deps.sh .venv
+cp configs/config.yaml.example configs/config.yaml
 .venv/bin/python -m app.main --config configs/config.yaml init-db
-.venv/bin/python -m app.main --config configs/config.yaml analyze-dir sample_audio
-.venv/bin/python -m app.main --config configs/config.yaml web
 ```
 
-Panel: [http://127.0.0.1:8080](http://127.0.0.1:8080)
-
-## GitHub / publikacja
-
-Repo jest przygotowane tak, zeby mozna je bylo wrzucic publicznie bez lokalnych artefaktow:
-
-- prywatne nadpisania deploy trzymaj w `configs/deploy.env`, ktory jest ignorowany przez Git
-- publiczny przyklad jest w [configs/deploy.env.example](/Users/kasze/audio_monitor/configs/deploy.env.example)
-- modele, baza SQLite, clipy WAV, logi i lokalne cache nie wchodza do repo
-- jesli uzywasz hasla SSH, trzymaj je w lokalnym sekrecie i odczytuj przez `AUDIO_MONITOR_SSH_PASSWORD_SECRET_CMD`
-
-Jesli chcesz ustawic swoj host deploy bez podawania argumentow w CLI:
+Testy lokalne:
 
 ```bash
-cp configs/deploy.env.example configs/deploy.env
+./scripts/test.sh
 ```
 
-Potem edytuj `AUDIO_MONITOR_TARGET` i opcjonalnie `AUDIO_MONITOR_REMOTE_DIR`.
+## Konfiguracja aplikacji
 
-## Tryb offline
-
-Pojedynczy plik WAV:
+Główny plik konfiguracyjny:
 
 ```bash
-.venv/bin/python -m app.main --config configs/config.yaml analyze-wav sample_audio/demo_siren.wav
+configs/config.yaml
 ```
 
-Katalog z WAV:
+Najważniejsze pola:
 
-```bash
-.venv/bin/python -m app.main --config configs/config.yaml analyze-dir sample_audio
-```
+- `audio.arecord_device`
+  - zostaw puste, jeśli aplikacja ma sama wybrać urządzenie
+  - ustaw np. `plughw:2,0`, jeśli chcesz wymusić konkretne wejście
+- `storage.database_path`
+- `storage.clip_dir`
+- `web.port`
+- `classifier.birdnet_api_url`
+  - opcjonalne
+  - jeśli ustawione, BAM wyśle próbkę do BirdNET dla klas ptasich wykrytych przez YAMNet
 
-Wymagany format offline dla MVP:
-- WAV PCM 16-bit
-- 16 kHz
-- mono lub stereo
+## Sprawdzenie audio
 
-Jesli probka ma inny format, skonwertuj ja przed uruchomieniem:
-
-```bash
-ffmpeg -i input.wav -ar 16000 -ac 1 -sample_fmt s16 sample_audio/output.wav
-```
-
-## Live capture na Raspberry Pi
-
-1. Sprawdz karte audio:
+Na Raspberry Pi:
 
 ```bash
 arecord -l
 ```
 
-2. Domyslnie zostaw `audio.arecord_device` puste. Aplikacja sama wybierze pierwsze sensowne wejscie capture, preferujac USB i uzywajac `plughw:X,Y`. Jesli chcesz wymusic konkretne urzadzenie, ustaw je recznie w [configs/config.yaml.example](/Users/kasze/audio_monitor/configs/config.yaml.example), np. `plughw:2,0`.
-
-3. Probe input:
+Z repo:
 
 ```bash
 .venv/bin/python -m app.main --config configs/config.yaml detect-audio
 .venv/bin/python -m app.main --config configs/config.yaml check-audio
 ```
 
-Jesli usluga juz trzyma input, `check-audio` zwroci komunikat o zajetym urzadzeniu zamiast falszywego bledu konfiguracji.
+## Uruchamianie lokalne
 
-## YAMNet
-
-- backend klasyfikacji jest ustawiony domyslnie na `classifier.backend: yamnet`
-- model `.tflite` i `yamnet_class_map.csv` pobieraja sie automatycznie przy pierwszej klasyfikacji do `models/`
-- na Raspberry Pi 3 B+ inference jest ograniczony do fragmentu zdarzenia i limitu okien, zeby nie mielic calego 90-sekundowego clipu
-- jesli YAMNet albo LiteRT nie sa dostepne, aplikacja fallbackuje do heurystyki i zapisuje powod w `classifier_decisions.details`
-- cache podobienstwa audio siedzi w SQLite i pozwala reuse'owac decyzje dla niemal identycznych klipow
-
-4. Uruchom bez weba:
+Analiza pojedynczego WAV:
 
 ```bash
-.venv/bin/python -m app.main --config configs/config.yaml run-live
+.venv/bin/python -m app.main --config configs/config.yaml analyze-wav sample_audio/demo_siren.wav
 ```
 
-5. Uruchom wszystko jako jedna usluge:
+Analiza katalogu WAV:
+
+```bash
+.venv/bin/python -m app.main --config configs/config.yaml analyze-dir sample_audio
+```
+
+Panel WWW:
+
+```bash
+.venv/bin/python -m app.main --config configs/config.yaml web
+```
+
+Pełna usługa lokalnie:
 
 ```bash
 .venv/bin/python -m app.main --config configs/config.yaml service
@@ -148,131 +117,132 @@ Jesli usluga juz trzyma input, `check-audio` zwroci komunikat o zajetym urzadzen
 
 ## Deploy na Raspberry Pi
 
-Przykladowy deploy do `/opt/audio-monitor`:
+Skonfiguruj lokalny plik deployu:
 
 ```bash
-./scripts/deploy.sh
+cp configs/deploy.env.example configs/deploy.env
 ```
 
-Domyslnie skrypt uzywa:
-- `AUDIO_MONITOR_TARGET=pi@raspberrypi.local`
-- `AUDIO_MONITOR_REMOTE_DIR=/opt/audio-monitor`
-
-Mozesz je nadpisac przez `configs/deploy.env`, zmienne srodowiskowe albo argumenty CLI:
+Ustaw co najmniej:
 
 ```bash
-./scripts/deploy.sh pi@raspberrypi.local /opt/audio-monitor
+AUDIO_MONITOR_TARGET=pi@raspberrypi.local
+AUDIO_MONITOR_REMOTE_DIR=/opt/audio-monitor
 ```
 
-Skrypt pokazuje teraz etapy deployu i obsluguje opcjonalne haslo SSH z sekretu. Przyklad na macOS:
-
-```bash
-security add-generic-password -a pi -s audio-monitor-rpi -w
-```
-
-W `configs/deploy.env`:
-
-```bash
-AUDIO_MONITOR_SSH_PASSWORD_SECRET_CMD='security find-generic-password -a pi -s audio-monitor-rpi -w'
-```
-
-Mozesz tez wpisac plain haslo bezposrednio w lokalnym `configs/deploy.env`:
+Jeśli używasz hasła SSH:
 
 ```bash
 AUDIO_MONITOR_SSH_PASSWORD='twoje-haslo'
 ```
 
-Przy hasle deploy uzyje `sshpass`, a jesli go nie ma, sprobuje lokalnego `expect`. Bez tego deploy nadal dziala normalnie przez klucze SSH albo interaktywne haslo.
-
-Skrypt:
-- synchronizuje repo przez `rsync`
-- instaluje zaleznosci systemowe
-- tworzy `.venv`
-- instaluje zaleznosci Pythona
-- kopiuje jednostke systemd
-- wlacza i restartuje usluge
-
-## Systemd i logi
-
-Jednostka: [systemd/audio-monitor.service](/Users/kasze/audio_monitor/systemd/audio-monitor.service)
-
-Logi lokalnie:
+Deploy:
 
 ```bash
-./scripts/logs.sh
+./scripts/deploy.sh
 ```
 
-Logi z laptopa:
-
-```bash
-./scripts/logs.sh pi@raspberrypi.local
-```
-
-Auto-detekcja inputu:
-
-```bash
-.venv/bin/python -m app.main --config configs/config.yaml detect-audio
-```
-
-Restart:
-
-```bash
-./scripts/restart_service.sh pi@raspberrypi.local
-```
-
-## Smoke test
-
-Skrypt sprawdza baze, probe audio oraz panel WWW:
-
-```bash
-./scripts/smoke_test.sh configs/config.yaml
-```
-
-Na laptopie bez mikrofonu USB:
-
-```bash
-SKIP_AUDIO=1 ./scripts/smoke_test.sh configs/config.yaml
-```
-
-## Testy i pelny workflow
-
-Testy:
-
-```bash
-./scripts/test.sh
-```
-
-Testy + deploy:
+Testy i deploy jednym poleceniem:
 
 ```bash
 ./scripts/test_and_deploy.sh
 ```
 
-Skrypty nie wymagaja argumentow, jesli wystarcza Ci domyslne ustawienia albo `configs/deploy.env`.
+## Uruchomienie jako usługa
 
-## Retencja clipow
+Deploy instaluje jednostkę `systemd` i restartuje usługę automatycznie.
 
-- `storage.clip_max_megabytes` ogranicza laczny rozmiar `data/clips/`
-- `storage.clip_max_age_days` kasuje stare clipy po wieku
-- `storage.min_free_disk_megabytes` trzyma rezerwe wolnego miejsca na filesystemie
-- przy retencji usuwane sa pliki WAV i odpowiadajace im JPG z widmem oraz ich metadane; eventy, statystyki i decyzje klasyfikatora zostaja w SQLite
-- jesli limitu nie da sie spelnic nawet po cleanupie, nowy clip nie zostanie zapisany, ale event nadal trafi do bazy
+Ręczna obsługa na Raspberry Pi:
 
-## Zbieranie probek do dalszego ulepszania
+```bash
+sudo systemctl status audio-monitor
+sudo systemctl restart audio-monitor
+sudo systemctl enable audio-monitor
+```
 
-- nagrywaj osobne sample przez [scripts/record_sample.sh](/Users/kasze/audio_monitor/scripts/record_sample.sh)
-- wrzucaj je do `sample_audio/`
-- notuj rzeczywista etykiete w nazwie pliku albo w osobnym arkuszu
-- uruchamiaj `analyze-dir`, porownuj wyniki i iteracyjnie strojenie heurystyk
+## Logi
 
-## Ograniczenia MVP
+Z repo:
 
-- mapowanie klas YAMNet do naszych kategorii jest warstwa translacji nad AudioSet, wiec nadal wymaga strojenia na realnych probkach z balkonu
-- brak resamplingu w aplikacji: dla stabilnosci MVP oczekuje WAV 16 kHz
-- dashboard pokazuje srednie godzinowe zamiast gestego wykresu z sekundowych punktow
-- jedna usluga laczy ingest i web, zeby uproscic operacje; gdy projekt dojrzeje, mozna je rozdzielic
-- zapisany clip nie musi odpowiadac calej dlugosci eventu; domyslnie jest to 8 s wokol najwyzszej energii, zeby lepiej izolowac dzwiek od tla
+```bash
+./scripts/logs.sh
+```
 
-## Kolejny krok po MVP
+Zdalnie:
 
-Najczystsza sciezka rozwoju to dodanie drugiego klasyfikatora za interfejsem z `app/classify`, np. lekkiego TFLite uruchamianego tylko na zakonczonych eventach zamiast na calym strumieniu.
+```bash
+./scripts/logs.sh pi@raspberrypi.local
+```
+
+Na Raspberry Pi:
+
+```bash
+journalctl -u audio-monitor -f
+```
+
+## Smoke test
+
+```bash
+./scripts/smoke_test.sh configs/config.yaml
+```
+
+Bez testu wejścia audio:
+
+```bash
+SKIP_AUDIO=1 ./scripts/smoke_test.sh configs/config.yaml
+```
+
+## Panel WWW
+
+Domyślnie:
+
+```text
+http://<adres-rpi>:8080
+```
+
+Endpoint zdrowia:
+
+```text
+/health
+```
+
+## BirdNET
+
+Opcjonalna integracja działa tylko dla przypadków, gdy YAMNet wykryje klasy ptasie. Wtedy BAM może wysłać próbkę do serwera BirdNET API i zapisać gatunek.
+
+Konfiguracja:
+
+```yaml
+classifier:
+  birdnet_api_url: http://host:port
+  birdnet_timeout_seconds: 15.0
+  birdnet_min_confidence: 0.20
+  birdnet_num_results: 5
+  birdnet_locale: pl
+```
+
+## Pliki i katalogi
+
+- `configs/config.yaml` lokalna konfiguracja aplikacji
+- `configs/deploy.env` lokalna konfiguracja deployu, ignorowana przez Git
+- `data/db/` baza SQLite
+- `data/clips/` zapisane próbki audio i obrazy widma
+- `systemd/audio-monitor.service` jednostka usługi
+
+## Publikacja repo
+
+Do GitHub nie powinny trafiać:
+
+- `configs/deploy.env`
+- lokalne `.env`
+- baza SQLite
+- clipy audio
+- modele pobrane lokalnie
+- logi i cache
+
+Przed pushem sprawdź:
+
+```bash
+git status --short
+git ls-files | rg 'deploy\.env|\.env|data/|models/'
+```

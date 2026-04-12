@@ -78,6 +78,12 @@
                 <p><strong>Klasyfikator:</strong> {{ trace.classifier_label }} v{{ trace.classifier_version }}</p>
                 <p><strong>Zewnętrzne API:</strong> {{ trace.external_api_name if trace.used_external_api else 'nie' }}</p>
                 <p><strong>Użyto cache:</strong> {{ 'tak' if trace.cache_hit else 'nie' }}</p>
+                {% if trace.birdnet_common_name %}
+                  <p><strong>Gatunek BirdNET:</strong> {{ trace.birdnet_common_name }}{% if trace.birdnet_scientific_name %} ({{ trace.birdnet_scientific_name }}){% endif %}</p>
+                {% endif %}
+                {% if trace.birdnet_trigger_labels %}
+                  <p><strong>Wyzwalacze YAMNet:</strong> {{ trace.birdnet_trigger_labels|map('translate_label')|join(', ') }}</p>
+                {% endif %}
                 {% if trace.resolved_label %}
                   <p><strong>Główna etykieta YAMNet:</strong> {{ translate_label(trace.resolved_label) }}{% if trace.resolved_label_score is not none %} ({{ '%.3f'|format(trace.resolved_label_score) }}){% endif %}</p>
                 {% endif %}

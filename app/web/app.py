@@ -61,6 +61,9 @@ YAMNET_LABEL_TRANSLATIONS = {
     "Engine": "Silnik",
     "Outside, urban or manmade": "Na zewnątrz, środowisko miejskie lub sztuczne",
     "Burping, eructation": "Beknięcie",
+    "Bird": "Ptak",
+    "Bird vocalization, bird call, bird song": "Głos ptaka, śpiew ptaka",
+    "Bird flight, flapping wings": "Lot ptaka, trzepot skrzydeł",
 }
 
 
@@ -260,6 +263,19 @@ def _describe_classifier_decision(decision: dict[str, object]) -> dict[str, obje
         "cache_similarity": normalized_details.get("cache_similarity"),
         "cache_source_event_id": normalized_details.get("cache_source_event_id"),
         "fallback_reason": normalized_details.get("fallback_reason"),
+        "birdnet_common_name": (
+            str(normalized_details.get("birdnet_common_name")) if normalized_details.get("birdnet_common_name") else None
+        ),
+        "birdnet_scientific_name": (
+            str(normalized_details.get("birdnet_scientific_name"))
+            if normalized_details.get("birdnet_scientific_name")
+            else None
+        ),
+        "birdnet_trigger_labels": [
+            str(item) for item in normalized_details.get("birdnet_trigger_labels", []) if isinstance(item, str)
+        ]
+        if isinstance(normalized_details.get("birdnet_trigger_labels"), list)
+        else [],
         "resolved_label": str(normalized_details.get("resolved_label")) if normalized_details.get("resolved_label") else None,
         "resolved_label_score": (
             float(normalized_details.get("resolved_label_score"))

@@ -95,6 +95,11 @@ class ClassifierConfig:
     yamnet_max_windows: int = 24
     yamnet_min_category_score: float = 0.08
     yamnet_top_k: int = 8
+    birdnet_api_url: str = ""
+    birdnet_timeout_seconds: float = 15.0
+    birdnet_min_confidence: float = 0.20
+    birdnet_num_results: int = 5
+    birdnet_locale: str = "pl"
 
 
 @dataclass(slots=True, frozen=True)
@@ -177,6 +182,11 @@ def load_config(path: str | Path | None = None) -> AppConfig:
             yamnet_max_windows=int(classifier["yamnet_max_windows"]),
             yamnet_min_category_score=float(classifier["yamnet_min_category_score"]),
             yamnet_top_k=int(classifier["yamnet_top_k"]),
+            birdnet_api_url=str(classifier.get("birdnet_api_url", "")),
+            birdnet_timeout_seconds=float(classifier.get("birdnet_timeout_seconds", 15.0)),
+            birdnet_min_confidence=float(classifier.get("birdnet_min_confidence", 0.20)),
+            birdnet_num_results=int(classifier.get("birdnet_num_results", 5)),
+            birdnet_locale=str(classifier.get("birdnet_locale", "pl")),
         ),
         storage=StorageConfig(
             database_path=_resolve_path(base_dir, storage["database_path"]),

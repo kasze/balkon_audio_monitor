@@ -87,14 +87,20 @@ def test_describe_classifier_decision_marks_external_api_when_present() -> None:
             "classifier_version": "1",
             "details": {
                 "used_external_api": True,
-                "external_api_name": "BirdNET Cloud",
+                "external_api_name": "BirdNET API",
+                "birdnet_common_name": "Bogatka",
+                "birdnet_scientific_name": "Parus major",
+                "birdnet_trigger_labels": ["Bird", "Bird vocalization, bird call, bird song"],
             },
         }
     )
 
     assert trace["source"] == "external_api"
     assert trace["used_external_api"] is True
-    assert trace["external_api_name"] == "BirdNET Cloud"
+    assert trace["external_api_name"] == "BirdNET API"
+    assert trace["birdnet_common_name"] == "Bogatka"
+    assert trace["birdnet_scientific_name"] == "Parus major"
+    assert trace["birdnet_trigger_labels"] == ["Bird", "Bird vocalization, bird call, bird song"]
 
 
 def test_read_cpu_load_percent(monkeypatch: pytest.MonkeyPatch) -> None:
