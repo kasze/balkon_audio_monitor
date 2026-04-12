@@ -26,53 +26,55 @@
     </article>
   </section>
 
-  <section class="grid two">
-    <article class="card">
-      <h3>Ostatnia godzina hałasu</h3>
-      {% if recent_chart %}
-        <div class="chart-wrap">
-          <svg viewBox="0 0 {{ recent_chart.width }} {{ recent_chart.height }}" class="chart">
-            <polyline fill="none" stroke="currentColor" stroke-width="3" points="{{ recent_chart.polyline }}"></polyline>
-          </svg>
-          <div class="chart-legend">
-            <span>{{ recent_chart.max_value }} dBFS</span>
-            <span>{{ recent_chart.min_value }} dBFS</span>
-          </div>
+  <section class="card">
+    <h3>Ostatnia godzina hałasu</h3>
+    {% if recent_chart %}
+      <div class="chart-wrap">
+        <svg viewBox="0 0 {{ recent_chart.width }} {{ recent_chart.height }}" class="chart">
+          <polyline fill="none" stroke="currentColor" stroke-width="3" points="{{ recent_chart.polyline }}"></polyline>
+        </svg>
+        <div class="chart-legend">
+          <span>{{ recent_chart.max_value }} dBFS</span>
+          <span>{{ recent_chart.min_value }} dBFS</span>
         </div>
-        <div class="hour-labels">
-          {% for label in recent_chart.labels %}
-            {% if loop.index0 % 6 == 0 or loop.last %}
-              <span>{{ label }}</span>
-            {% endif %}
-          {% endfor %}
-        </div>
-      {% else %}
-        <p>Brak danych z ostatniej godziny.</p>
-      {% endif %}
-    </article>
-
-    <article class="card">
-      <h3>Wykres hałasu (średnia godzinowa)</h3>
-      {% if chart %}
-        <div class="chart-wrap">
-          <svg viewBox="0 0 {{ chart.width }} {{ chart.height }}" class="chart">
-            <polyline fill="none" stroke="currentColor" stroke-width="3" points="{{ chart.polyline }}"></polyline>
-          </svg>
-          <div class="chart-legend">
-            <span>{{ chart.max_value }} dBFS</span>
-            <span>{{ chart.min_value }} dBFS</span>
-          </div>
-        </div>
-        <div class="hour-labels">
-          {% for label in chart.labels %}
+      </div>
+      <div class="hour-labels sparse-labels">
+        {% for label in recent_chart.labels %}
+          {% if loop.first or loop.index0 % 6 == 0 or loop.last %}
             <span>{{ label }}</span>
-          {% endfor %}
-        </div>
-      {% else %}
-        <p>Brak danych godzinowych.</p>
-      {% endif %}
-    </article>
+          {% endif %}
+        {% endfor %}
+      </div>
+    {% else %}
+      <p>Brak danych z ostatniej godziny.</p>
+    {% endif %}
+  </section>
 
+  <section class="card">
+    <h3>Wykres hałasu (średnia godzinowa)</h3>
+    {% if chart %}
+      <div class="chart-wrap">
+        <svg viewBox="0 0 {{ chart.width }} {{ chart.height }}" class="chart">
+          <polyline fill="none" stroke="currentColor" stroke-width="3" points="{{ chart.polyline }}"></polyline>
+        </svg>
+        <div class="chart-legend">
+          <span>{{ chart.max_value }} dBFS</span>
+          <span>{{ chart.min_value }} dBFS</span>
+        </div>
+      </div>
+      <div class="hour-labels sparse-labels">
+        {% for label in chart.labels %}
+          {% if loop.first or loop.index0 % 4 == 0 or loop.last %}
+            <span>{{ label }}</span>
+          {% endif %}
+        {% endfor %}
+      </div>
+    {% else %}
+      <p>Brak danych godzinowych.</p>
+    {% endif %}
+  </section>
+
+  <section class="grid two">
     <article class="card">
       <h3>Zdarzenia wg kategorii</h3>
       {% if dashboard.categories %}

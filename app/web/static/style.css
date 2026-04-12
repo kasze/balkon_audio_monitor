@@ -152,6 +152,11 @@ main {
   flex-wrap: wrap;
 }
 
+.sparse-labels {
+  justify-content: flex-start;
+  gap: 18px;
+}
+
 .plain-list {
   list-style: none;
   padding: 0;
