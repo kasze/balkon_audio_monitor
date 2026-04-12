@@ -1,5 +1,5 @@
 [Unit]
-Description=Balcony Audio Monitor
+Description=Balkon Audio Monitor (BAM)
 After=network.target sound.target
 Wants=network.target
 

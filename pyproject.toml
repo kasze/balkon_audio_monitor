@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "audio-monitor"
+name = "balkon-audio-monitor"
 version = "0.1.0"
-description = "Lightweight balcony audio monitoring MVP for Raspberry Pi 3 B+"
+description = "Balkon Audio Monitor (BAM) for Raspberry Pi 3 B+"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

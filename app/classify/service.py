@@ -386,7 +386,7 @@ def _reshape_input_batch(samples: np.ndarray, input_shape: tuple[int, ...]) -> n
 
 def download_file(url: str, target_path: Path) -> None:
     LOGGER.info("Downloading %s to %s", url, target_path)
-    request = urllib.request.Request(url, headers={"User-Agent": "audio-monitor/0.1"})
+    request = urllib.request.Request(url, headers={"User-Agent": "bam/0.1"})
     target_path.parent.mkdir(parents=True, exist_ok=True)
     temporary_path = target_path.with_suffix(target_path.suffix + ".tmp")
     with urllib.request.urlopen(request, timeout=60) as response, temporary_path.open("wb") as handle:

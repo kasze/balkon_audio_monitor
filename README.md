@@ -1,4 +1,4 @@
-# Audio Monitor MVP
+# Balkon Audio Monitor (BAM)
 
 Lekki projekt do 24/7 monitoringu dzwiekow na balkonie na Raspberry Pi 3 B+ z USB audio i panelem WWW. MVP celowo stawia na stabilnosc, prosty deploy przez SSH/rsync i czytelna architekture, a nie na maksymalna dokladnosc klasyfikacji.
 
