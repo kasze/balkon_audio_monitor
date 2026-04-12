@@ -300,10 +300,19 @@ class SQLiteRepository:
                 """,
                 (recent_limit,),
             ).fetchall()
+            recent_noise = connection.execute(
+                """
+                SELECT started_at AS bucket_start, avg_dbfs, max_dbfs
+                FROM noise_intervals
+                WHERE started_at >= datetime('now', 'localtime', '-1 hour')
+                ORDER BY started_at ASC
+                """
+            ).fetchall()
         return {
             "summary": dict(summary) if summary else {"event_count": 0, "avg_dbfs": None, "max_dbfs": None},
             "categories": [dict(row) for row in categories],
             "hourly": [dict(row) for row in hourly],
+            "recent_noise": [dict(row) for row in recent_noise],
             "recent_events": [dict(row) for row in recent],
         }
 

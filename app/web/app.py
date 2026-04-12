@@ -31,11 +31,13 @@ def create_app(repository: SQLiteRepository, status: RuntimeStatus, config: AppC
         today = datetime.now().astimezone().strftime("%Y-%m-%d")
         dashboard = repository.get_dashboard(today, config.web.recent_events_limit)
         chart = _build_chart(dashboard["hourly"])
+        recent_chart = _build_chart(dashboard["recent_noise"], label_slice=slice(11, 19))
         return render_template(
             "index.html",
             day=today,
             dashboard=dashboard,
             chart=chart,
+            recent_chart=recent_chart,
         )
 
     @app.get("/events/<int:event_id>")
@@ -83,10 +85,10 @@ def create_app(repository: SQLiteRepository, status: RuntimeStatus, config: AppC
     return app
 
 
-def _build_chart(rows: list[dict[str, object]]) -> dict[str, object] | None:
+def _build_chart(rows: list[dict[str, object]], label_slice: slice = slice(11, 16)) -> dict[str, object] | None:
     if not rows:
         return None
-    labels = [str(row["bucket_start"])[11:16] for row in rows]
+    labels = [str(row["bucket_start"])[label_slice] for row in rows]
     values = [float(row["avg_dbfs"]) for row in rows]
     width = 760
     height = 220
