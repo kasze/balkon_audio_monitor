@@ -3,10 +3,9 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 *.pyc
-data/db/*.sqlite3
-data/clips/**/*.wav
-data/clips/*.wav
-models/*.tflite
-models/*.csv
+data/db/
+data/clips/
+models/
 *.log
 configs/local.yaml
+configs/deploy.env

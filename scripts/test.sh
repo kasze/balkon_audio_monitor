@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PYTHON_BIN="${PYTHON_BIN:-.venv/bin/python}"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PYTHON_BIN="${PYTHON_BIN:-${ROOT_DIR}/.venv/bin/python}"
 
-"${PYTHON_BIN}" -m pytest
+cd "${ROOT_DIR}"
+
+PYTHONPATH="${PYTHONPATH:-${ROOT_DIR}}" "${PYTHON_BIN}" -m pytest

@@ -86,6 +86,8 @@ class SQLiteRepository:
                     mid_band_ratio REAL NOT NULL,
                     high_band_ratio REAL NOT NULL,
                     clip_id INTEGER,
+                    user_label TEXT,
+                    user_label_updated_at TEXT,
                     summary_json TEXT NOT NULL,
                     created_at TEXT NOT NULL,
                     FOREIGN KEY (clip_id) REFERENCES clips(id)
@@ -143,6 +145,8 @@ class SQLiteRepository:
                     ON classifier_cache(classifier_name, signature_hash);
                 """
             )
+            self._ensure_column(connection, "events", "user_label", "TEXT")
+            self._ensure_column(connection, "events", "user_label_updated_at", "TEXT")
             self._ensure_column(connection, "clips", "spectrogram_path", "TEXT")
             self._ensure_column(connection, "clips", "spectrogram_byte_size", "INTEGER NOT NULL DEFAULT 0")
             connection.commit()
@@ -274,26 +278,34 @@ class SQLiteRepository:
             ).fetchone()
             categories = connection.execute(
                 """
-                SELECT category, COUNT(*) AS total
+                SELECT COALESCE(user_label, category) AS category, COUNT(*) AS total
                 FROM events
                 WHERE substr(started_at, 1, 10) = ?
-                GROUP BY category
-                ORDER BY total DESC, category ASC
+                GROUP BY COALESCE(user_label, category)
+                ORDER BY total DESC, COALESCE(user_label, category) ASC
                 """,
                 (day,),
             ).fetchall()
-            hourly = connection.execute(
+            ten_minute = connection.execute(
                 """
-                SELECT bucket_start, avg_dbfs, max_dbfs, event_count
-                FROM hourly_stats
-                WHERE substr(bucket_start, 1, 10) = ?
+                SELECT
+                    substr(started_at, 1, 14)
+                        || printf('%02d', (CAST(substr(started_at, 15, 2) AS INTEGER) / 10) * 10)
+                        || ':00' AS bucket_start,
+                    AVG(avg_dbfs) AS avg_dbfs,
+                    MAX(max_dbfs) AS max_dbfs,
+                    COUNT(*) AS interval_count
+                FROM noise_intervals
+                WHERE substr(started_at, 1, 10) = ?
+                GROUP BY bucket_start
                 ORDER BY bucket_start ASC
                 """,
                 (day,),
             ).fetchall()
             recent = connection.execute(
                 """
-                SELECT id, started_at, ended_at, duration_seconds, category, confidence, peak_dbfs
+                SELECT id, started_at, ended_at, duration_seconds, COALESCE(user_label, category) AS category,
+                       confidence, peak_dbfs, user_label
                 FROM events
                 ORDER BY started_at DESC
                 LIMIT ?
@@ -311,7 +323,7 @@ class SQLiteRepository:
         return {
             "summary": dict(summary) if summary else {"event_count": 0, "avg_dbfs": None, "max_dbfs": None},
             "categories": [dict(row) for row in categories],
-            "hourly": [dict(row) for row in hourly],
+            "ten_minute": [dict(row) for row in ten_minute],
             "recent_noise": [dict(row) for row in recent_noise],
             "recent_events": [dict(row) for row in recent],
         }
@@ -324,13 +336,14 @@ class SQLiteRepository:
         limit: int = 100,
     ) -> list[dict[str, Any]]:
         query = """
-            SELECT id, started_at, ended_at, duration_seconds, category, confidence, peak_dbfs
+            SELECT id, started_at, ended_at, duration_seconds, COALESCE(user_label, category) AS category,
+                   confidence, peak_dbfs, user_label
             FROM events
         """
         conditions: list[str] = []
         params: list[Any] = []
         if category:
-            conditions.append("category = ?")
+            conditions.append("COALESCE(user_label, category) = ?")
             params.append(category)
         if day:
             conditions.append("substr(started_at, 1, 10) = ?")
@@ -349,7 +362,8 @@ class SQLiteRepository:
             row = connection.execute(
                 """
                 SELECT e.*, c.path AS clip_path, c.spectrogram_path AS spectrogram_path,
-                       c.duration_seconds AS clip_duration, c.sample_rate AS clip_sample_rate
+                       c.duration_seconds AS clip_duration, c.sample_rate AS clip_sample_rate,
+                       COALESCE(e.user_label, e.category) AS effective_category
                 FROM events e
                 LEFT JOIN clips c ON c.id = e.clip_id
                 WHERE e.id = ?
@@ -374,6 +388,21 @@ class SQLiteRepository:
             {**dict(item), "details": json.loads(item["details_json"])} for item in decision_rows
         ]
         return event
+
+    def set_event_user_label(self, event_id: int, user_label: str | None) -> bool:
+        normalized = user_label.strip() if user_label else None
+        updated_at = _iso(datetime.now().astimezone()) if normalized else None
+        with closing(self._connect()) as connection:
+            cursor = connection.execute(
+                """
+                UPDATE events
+                SET user_label = ?, user_label_updated_at = ?
+                WHERE id = ?
+                """,
+                (normalized, updated_at, event_id),
+            )
+            connection.commit()
+        return cursor.rowcount > 0
 
     def insert_classifier_cache_entry(
         self,
@@ -419,13 +448,16 @@ class SQLiteRepository:
         with closing(self._connect()) as connection:
             rows = connection.execute(
                 """
-                SELECT event_id, classifier_name, classifier_version, category, confidence,
-                       signature_hash, signature_json, details_json
-                FROM classifier_cache
-                WHERE classifier_name = ?
-                  AND confidence >= ?
-                  AND created_at >= ?
-                ORDER BY created_at DESC
+                SELECT cc.event_id, cc.classifier_name, cc.classifier_version,
+                       COALESCE(e.user_label, cc.category) AS category,
+                       CASE WHEN e.user_label IS NOT NULL THEN MAX(cc.confidence, 0.99) ELSE cc.confidence END AS confidence,
+                       cc.signature_hash, cc.signature_json, cc.details_json, e.user_label
+                FROM classifier_cache cc
+                LEFT JOIN events e ON e.id = cc.event_id
+                WHERE cc.classifier_name = ?
+                  AND (cc.confidence >= ? OR e.user_label IS NOT NULL)
+                  AND cc.created_at >= ?
+                ORDER BY cc.created_at DESC
                 LIMIT ?
                 """,
                 (classifier_name, min_confidence, created_after, limit),
@@ -439,7 +471,17 @@ class SQLiteRepository:
                 confidence=float(row["confidence"]),
                 signature_hash=str(row["signature_hash"]),
                 signature=list(json.loads(row["signature_json"])),
-                details=dict(json.loads(row["details_json"])),
+                details={
+                    **dict(json.loads(row["details_json"])),
+                    **(
+                        {
+                            "manual_label": True,
+                            "manual_label_category": str(row["user_label"]),
+                        }
+                        if row["user_label"]
+                        else {}
+                    ),
+                },
             )
             for row in rows
         ]

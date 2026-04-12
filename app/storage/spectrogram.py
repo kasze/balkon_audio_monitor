@@ -52,8 +52,28 @@ class SpectrogramRenderer:
         max_value = float(matrix.max()) if matrix.size else 0.0
         if max_value > 0.0:
             matrix /= max_value
-        matrix = np.power(matrix, 0.7)
+        matrix = np.power(matrix, 0.55)
         matrix = np.flipud(matrix)
-        image_bytes = np.clip(matrix * 255.0, 0.0, 255.0).astype(np.uint8)
-        image = Image.fromarray(image_bytes)
+        image = Image.fromarray(self._apply_colormap(matrix))
         return image.resize((self.width, self.height), resample=Image.Resampling.BILINEAR)
+
+    @staticmethod
+    def _apply_colormap(matrix: np.ndarray) -> np.ndarray:
+        palette = np.asarray(
+            [
+                [6, 10, 24],
+                [22, 44, 92],
+                [29, 103, 168],
+                [38, 172, 197],
+                [116, 220, 164],
+                [246, 207, 91],
+                [255, 138, 76],
+                [255, 244, 232],
+            ],
+            dtype=np.float32,
+        )
+        positions = np.linspace(0.0, 1.0, num=len(palette), dtype=np.float32)
+        flattened = np.clip(matrix.reshape(-1), 0.0, 1.0)
+        channels = [np.interp(flattened, positions, palette[:, channel]) for channel in range(3)]
+        rgb = np.stack(channels, axis=1).reshape(matrix.shape[0], matrix.shape[1], 3)
+        return np.clip(rgb, 0.0, 255.0).astype(np.uint8)

@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 
 from app.config import AppConfig, StorageConfig
-from app.models import ClassifierDecision, CompletedEvent, EventSummary
+from app.models import ClassifierDecision, ClipMetadata, CompletedEvent, EventSummary
 from app.pipeline import RuntimeStatus
 from app.storage.database import SQLiteRepository
 from app.web.app import create_app
@@ -66,6 +66,119 @@ def test_category_page_lists_filtered_events(tmp_path: Path) -> None:
     assert response.status_code == 200
     html = response.get_data(as_text=True)
     assert "/events/1" in html
-    assert "Ambulance / syrena karetki" in html
+    assert "Karetka / syrena karetki" in html
     assert "/categories/ambulance" in html
     assert "/events/2" not in html
+
+
+def test_manual_label_updates_event_and_category_views(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "audio_monitor.sqlite3")
+    repository.initialize()
+    now = datetime.now().astimezone().replace(microsecond=0)
+
+    repository.insert_event(
+        _build_event("street_background", now),
+        ClassifierDecision("yamnet_litert", "1", "street_background", 0.7, {}),
+        None,
+    )
+
+    app = create_app(
+        repository,
+        RuntimeStatus(),
+        AppConfig(
+            base_dir=tmp_path,
+            storage=StorageConfig(database_path=repository.database_path, clip_dir=tmp_path / "clips"),
+        ),
+    )
+    client = app.test_client()
+
+    response = client.post("/events/1/label", data={"user_label": "ambulance"}, follow_redirects=True)
+
+    assert response.status_code == 200
+    html = response.get_data(as_text=True)
+    assert "Ręczna korekta:" in html
+    assert "Karetka / syrena karetki" in html
+
+    category_response = client.get("/categories/ambulance")
+    assert category_response.status_code == 200
+    assert "/events/1" in category_response.get_data(as_text=True)
+
+
+def test_manual_label_accepts_full_yamnet_label(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "audio_monitor.sqlite3")
+    repository.initialize()
+    now = datetime.now().astimezone().replace(microsecond=0)
+
+    repository.insert_event(
+        _build_event("street_background", now),
+        ClassifierDecision("yamnet_litert", "1", "street_background", 0.7, {}),
+        None,
+    )
+
+    model_dir = tmp_path / "models"
+    model_dir.mkdir()
+    (model_dir / "yamnet_class_map.csv").write_text(
+        "index,mid,display_name\n0,/m/09x0r,Speech\n1,/m/01h8n0,Conversation\n",
+        encoding="utf-8",
+    )
+
+    app = create_app(
+        repository,
+        RuntimeStatus(),
+        AppConfig(
+            base_dir=tmp_path,
+            storage=StorageConfig(database_path=repository.database_path, clip_dir=tmp_path / "clips"),
+        ),
+    )
+    client = app.test_client()
+
+    response = client.post("/events/1/label", data={"user_label": "Speech"}, follow_redirects=True)
+
+    assert response.status_code == 200
+    html = response.get_data(as_text=True)
+    assert "Mowa" in html
+
+
+def test_event_details_show_clip_duration_separately_from_event_duration(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "audio_monitor.sqlite3")
+    repository.initialize()
+    now = datetime.now().astimezone().replace(microsecond=0)
+
+    clip_path = tmp_path / "clips" / "sample.wav"
+    clip_path.parent.mkdir(parents=True, exist_ok=True)
+    clip_path.write_bytes(b"RIFFdemo")
+
+    spectrogram_path = tmp_path / "clips" / "sample.jpg"
+    spectrogram_path.write_bytes(b"jpeg")
+
+    repository.insert_event(
+        _build_event("street_background", now),
+        ClassifierDecision("yamnet_litert", "1", "street_background", 0.7, {}),
+        ClipMetadata(
+            path=clip_path,
+            spectrogram_path=spectrogram_path,
+            sample_rate=16_000,
+            channels=1,
+            duration_seconds=4.0,
+            byte_size=clip_path.stat().st_size,
+            spectrogram_byte_size=spectrogram_path.stat().st_size,
+            sha1="demo",
+        ),
+    )
+
+    app = create_app(
+        repository,
+        RuntimeStatus(),
+        AppConfig(
+            base_dir=tmp_path,
+            storage=StorageConfig(database_path=repository.database_path, clip_dir=tmp_path / "clips"),
+        ),
+    )
+    client = app.test_client()
+
+    response = client.get("/events/1")
+
+    assert response.status_code == 200
+    html = response.get_data(as_text=True)
+    assert "Czas zdarzenia:</strong> 4.0 s" in html
+    assert "Czas próbki audio:</strong> 4.0 s" in html

@@ -12,10 +12,6 @@
           aria-label="{{ aria_label }}"
         ></canvas>
         <div class="chart-tooltip" hidden></div>
-        <div class="chart-legend">
-          <span>{{ chart["max_value"] }} dBFS</span>
-          <span>{{ chart["min_value"] }} dBFS</span>
-        </div>
       </div>
     {% else %}
       <p>{{ empty_message }}</p>

@@ -11,27 +11,12 @@ from app.classify.service import (
     compute_audio_signature,
 )
 from app.config import ClassifierConfig
-from app.models import (
-    ClassifierCacheEntry,
-    ClassifierDecision,
-    CompletedEvent,
-    EventSummary,
-)
+from app.models import ClassificationOutcome, ClassifierDecision, CompletedEvent, EventSummary
 
 
 class FakeRepository:
-    def __init__(self, entries: list[ClassifierCacheEntry] | None = None) -> None:
-        self.entries = entries or []
+    def __init__(self) -> None:
         self.inserted: list[dict[str, object]] = []
-
-    def list_classifier_cache_entries(
-        self,
-        classifier_name: str,
-        min_confidence: float,
-        lookback_days: int,
-        limit: int,
-    ) -> list[ClassifierCacheEntry]:
-        return list(self.entries)
 
     def insert_classifier_cache_entry(self, **kwargs) -> None:
         self.inserted.append(kwargs)
@@ -62,35 +47,37 @@ def make_event(samples: np.ndarray | None = None) -> CompletedEvent:
     return CompletedEvent(summary=summary, clip_samples=clip_samples, sample_rate=16_000)
 
 
-def test_app_classifier_reuses_cached_decision(monkeypatch) -> None:
+def test_app_classifier_always_runs_yamnet_even_for_identical_sample(monkeypatch) -> None:
     event = make_event()
-    signature_hash, signature = compute_audio_signature(event.clip_samples, event.sample_rate)
-    repository = FakeRepository(
-        entries=[
-            ClassifierCacheEntry(
-                event_id=42,
-                classifier_name="yamnet_litert",
-                classifier_version="1",
-                category="airplane",
-                confidence=0.88,
-                signature_hash=signature_hash,
-                signature=signature,
-                details={"top_labels": [{"label": "Fixed-wing aircraft, airplane", "mean_score": 0.88}]},
-            )
-        ]
-    )
+    repository = FakeRepository()
     classifier = AppClassifier(ClassifierConfig(), repository)  # type: ignore[arg-type]
+    calls: list[CompletedEvent] = []
     monkeypatch.setattr(
         classifier.yamnet,
         "classify",
-        lambda _event: (_ for _ in ()).throw(AssertionError("YAMNet should not run when cache hits")),
+        lambda sample_event: calls.append(sample_event)
+        or ClassifierDecision("yamnet_litert", "1", "airplane", 0.88, {"cache_hit": False}),
     )
 
     outcome = classifier.classify(event)
 
     assert outcome.decision.category == "airplane"
-    assert outcome.decision.details["cache_hit"] is True
-    assert outcome.decision.details["cache_source_event_id"] == 42
+    assert outcome.decision.details["cache_hit"] is False
+    assert calls == [event]
+
+def test_app_classifier_does_not_store_similarity_cache_entries(monkeypatch) -> None:
+    event = make_event()
+    repository = FakeRepository()
+    classifier = AppClassifier(ClassifierConfig(), repository)  # type: ignore[arg-type]
+    outcome = ClassificationOutcome(
+        decision=ClassifierDecision("yamnet_litert", "1", "ambulance", 0.99, {"cache_hit": False}),
+        signature_hash="demo",
+        signature=[0.1, 0.2],
+    )
+
+    classifier.remember(outcome, 7)
+
+    assert repository.inserted == []
 
 
 def test_yamnet_mapping_prefers_specific_emergency_label() -> None:
@@ -109,10 +96,14 @@ def test_yamnet_mapping_prefers_specific_emergency_label() -> None:
         top_labels=[],
     )
 
-    category, confidence, category_scores = classifier._map_to_domain_category(output)
+    category, confidence, category_scores, resolved_label, resolved_label_score = classifier._map_to_domain_category(
+        output
+    )
 
     assert category == "ambulance"
     assert confidence > 0.40
+    assert resolved_label == "ambulance"
+    assert resolved_label_score == confidence
     assert category_scores["ambulance"] > category_scores["street_background"]
 
 
@@ -124,8 +115,31 @@ def test_yamnet_mapping_falls_back_to_background() -> None:
         top_labels=[],
     )
 
-    category, confidence, category_scores = classifier._map_to_domain_category(output)
+    category, confidence, category_scores, resolved_label, resolved_label_score = classifier._map_to_domain_category(
+        output
+    )
 
     assert category == "street_background"
     assert confidence >= 0.18
+    assert resolved_label == "Traffic noise, roadway noise"
+    assert resolved_label_score == confidence
     assert category_scores["street_background"] > 0.0
+
+
+def test_yamnet_mapping_uses_raw_yamnet_label_for_strong_non_domain_label() -> None:
+    classifier = YAMNetClassifier(ClassifierConfig())
+    output = YAMNetModelOutput(
+        mean_scores={"Speech": 0.733, "Inside, small room": 0.032, "Silence": 0.009},
+        peak_scores={"Speech": 0.980, "Inside, small room": 0.059, "Silence": 0.109},
+        top_labels=[],
+    )
+
+    category, confidence, category_scores, resolved_label, resolved_label_score = classifier._map_to_domain_category(
+        output
+    )
+
+    assert category == "Speech"
+    assert confidence > 0.80
+    assert resolved_label == "Speech"
+    assert resolved_label_score == confidence
+    assert max(category_scores.values()) == 0.0

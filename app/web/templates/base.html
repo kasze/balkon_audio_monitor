@@ -19,10 +19,10 @@
         <div class="status-metrics">
           <p><strong>Audio</strong> {{ 'OK' if status and status.audio_available else 'brak sygnału' }}</p>
           <p><strong>CPU</strong> {{ ('%.1f'|format(system_status.cpu_percent) ~ '%') if system_status.cpu_percent is not none else 'brak danych' }}</p>
+          <p><strong>Temp CPU</strong> {{ ('%.1f'|format(system_status.cpu_temperature_c) ~ ' C') if system_status.cpu_temperature_c is not none else 'brak danych' }}</p>
           <p><strong>RAM</strong> {{ ('%.2f'|format(system_status.memory_available_gb) ~ ' GB') if system_status.memory_available_gb is not none else 'brak danych' }}</p>
           <p><strong>Dysk</strong> {{ ('%.2f'|format(system_status.disk_free_gb) ~ ' GB') if system_status.disk_free_gb is not none else 'brak danych' }}</p>
         </div>
-        <p class="status-last-frame"><strong>Ostatnia ramka</strong> {{ format_local_timestamp(status.last_frame_at if status else None) }}</p>
       </div>
     </header>
     <main>

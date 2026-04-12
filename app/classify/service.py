@@ -15,7 +15,6 @@ import numpy as np
 from app.config import ClassifierConfig
 from app.models import (
     ClassificationOutcome,
-    ClassifierCacheEntry,
     ClassifierDecision,
     CompletedEvent,
 )
@@ -82,25 +81,6 @@ class AppClassifier:
             return ClassificationOutcome(decision=self.heuristics.classify(event.summary))
 
         signature_hash, signature = compute_audio_signature(event.clip_samples, event.sample_rate)
-        cached = self._find_similar_cached_decision(signature_hash, signature)
-        if cached is not None:
-            return ClassificationOutcome(
-                decision=ClassifierDecision(
-                    classifier_name=self.yamnet.classifier_name,
-                    classifier_version=self.yamnet.classifier_version,
-                    category=cached.category,
-                    confidence=cached.confidence,
-                    details={
-                        **cached.details,
-                        "cache_hit": True,
-                        "cache_similarity": round(float(cached.details.get("cache_similarity", 1.0)), 6),
-                        "cache_source_event_id": cached.event_id,
-                    },
-                ),
-                signature_hash=signature_hash,
-                signature=signature,
-            )
-
         try:
             decision = self.yamnet.classify(event)
         except Exception as exc:  # pragma: no cover - exercised on device when runtime/model fails
@@ -112,49 +92,7 @@ class AppClassifier:
         return ClassificationOutcome(decision=decision, signature_hash=signature_hash, signature=signature)
 
     def remember(self, outcome: ClassificationOutcome, event_id: int) -> None:
-        if not outcome.signature_hash or not outcome.signature:
-            return
-        if not outcome.decision.classifier_name.startswith("yamnet"):
-            return
-        self.repository.insert_classifier_cache_entry(
-            event_id=event_id,
-            classifier_name=self.yamnet.classifier_name,
-            classifier_version=self.yamnet.classifier_version,
-            category=outcome.decision.category,
-            confidence=outcome.decision.confidence,
-            signature_hash=outcome.signature_hash,
-            signature=outcome.signature,
-            details=outcome.decision.details,
-        )
-
-    def _find_similar_cached_decision(
-        self,
-        signature_hash: str,
-        signature: list[float],
-    ) -> ClassifierCacheEntry | None:
-        candidates = self.repository.list_classifier_cache_entries(
-            classifier_name=self.yamnet.classifier_name,
-            min_confidence=self.config.reuse_confidence_threshold,
-            lookback_days=self.config.similarity_lookback_days,
-            limit=self.config.similarity_cache_limit,
-        )
-        best_match: ClassifierCacheEntry | None = None
-        best_similarity = -1.0
-        signature_vec = np.asarray(signature, dtype=np.float32)
-
-        for candidate in candidates:
-            if candidate.signature_hash == signature_hash:
-                candidate.details = {**candidate.details, "cache_similarity": 1.0}
-                return candidate
-            similarity = cosine_similarity(signature_vec, np.asarray(candidate.signature, dtype=np.float32))
-            if similarity >= self.config.reuse_similarity_threshold and similarity > best_similarity:
-                best_similarity = similarity
-                best_match = candidate
-
-        if best_match is None:
-            return None
-        best_match.details = {**best_match.details, "cache_similarity": best_similarity}
-        return best_match
+        return
 
 
 class YAMNetClassifier:
@@ -172,7 +110,9 @@ class YAMNetClassifier:
 
     def classify(self, event: CompletedEvent) -> ClassifierDecision:
         model_output = self._classify_samples(event.clip_samples)
-        category, confidence, category_scores = self._map_to_domain_category(model_output)
+        category, confidence, category_scores, resolved_label, resolved_label_score = self._map_to_domain_category(
+            model_output
+        )
         return ClassifierDecision(
             classifier_name=self.classifier_name,
             classifier_version=self.classifier_version,
@@ -181,6 +121,8 @@ class YAMNetClassifier:
             details={
                 "top_labels": model_output.top_labels,
                 "category_scores": category_scores,
+                "resolved_label": resolved_label,
+                "resolved_label_score": resolved_label_score,
                 "cache_hit": False,
             },
         )
@@ -227,11 +169,14 @@ class YAMNetClassifier:
     def _map_to_domain_category(
         self,
         output: YAMNetModelOutput,
-    ) -> tuple[str, float, dict[str, float]]:
-        label_scores = {}
+    ) -> tuple[str, float, dict[str, float], str | None, float | None]:
+        label_scores: dict[str, float] = {}
         for label, mean_value in output.mean_scores.items():
             peak_value = output.peak_scores.get(label, mean_value)
             label_scores[label] = 0.35 * mean_value + 0.65 * peak_value
+
+        top_label = max(label_scores.items(), key=lambda item: item[1], default=(None, 0.0))
+        top_label_name, top_label_score = top_label
 
         category_scores: dict[str, float] = {}
         for category, weights in YAMNET_CATEGORY_WEIGHTS.items():
@@ -241,11 +186,32 @@ class YAMNetClassifier:
         non_background = {k: v for k, v in category_scores.items() if k != "street_background"}
         top_category = max(non_background, key=non_background.get, default="street_background")
         top_score = non_background.get(top_category, 0.0)
-        if top_score < self.config.yamnet_min_category_score:
-            background_score = category_scores.get("street_background", 0.0)
-            fallback_confidence = max(background_score, 0.50)
-            return "street_background", round(float(fallback_confidence), 6), category_scores
-        return top_category, round(float(top_score), 6), category_scores
+        if top_score >= self.config.yamnet_min_category_score:
+            return top_category, round(float(top_score), 6), category_scores, top_category, round(float(top_score), 6)
+
+        background_score = category_scores.get("street_background", 0.0)
+        if background_score >= self.config.yamnet_min_category_score:
+            return (
+                "street_background",
+                round(float(background_score), 6),
+                category_scores,
+                "Traffic noise, roadway noise",
+                round(float(background_score), 6),
+            )
+
+        if top_label_name and top_label_score >= self.config.yamnet_min_category_score:
+            return (
+                str(top_label_name),
+                round(float(top_label_score), 6),
+                category_scores,
+                str(top_label_name),
+                round(float(top_label_score), 6),
+            )
+
+        fallback_confidence = max(float(top_label_score), background_score, 0.50)
+        return "street_background", round(float(fallback_confidence), 6), category_scores, top_label_name, round(
+            float(top_label_score), 6
+        )
 
     def _build_inference_batches(self, samples: np.ndarray) -> list[np.ndarray]:
         normalized = np.clip(samples.astype(np.float32, copy=False), -1.0, 1.0)

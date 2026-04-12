@@ -3,17 +3,35 @@
 {% block content %}
   <section class="card">
     <h2>Zdarzenie #{{ event.id }}</h2>
-    <p><strong>Kategoria:</strong> {{ category_labels.get(event.category, event.category) }}</p>
+    <p><strong>Kategoria:</strong> {{ translate_label(event.effective_category) }}</p>
     <p><strong>Start:</strong> {{ event.started_at }}</p>
     <p><strong>Koniec:</strong> {{ event.ended_at }}</p>
-    <p><strong>Czas:</strong> {{ '%.1f'|format(event.duration_seconds) }} s</p>
+    <p><strong>Czas zdarzenia:</strong> {{ '%.1f'|format(event.duration_seconds) }} s</p>
+    {% if event.clip_duration is not none %}
+      <p><strong>Czas próbki audio:</strong> {{ '%.1f'|format(event.clip_duration) }} s</p>
+    {% elif event.summary.details.focus_clip_duration_seconds is defined %}
+      <p><strong>Czas próbki audio:</strong> {{ '%.1f'|format(event.summary.details.focus_clip_duration_seconds) }} s</p>
+    {% endif %}
     <p><strong>Pewność:</strong> {{ '%.2f'|format(event.confidence) }}</p>
-    <p><strong>Szczyt:</strong> {{ '%.1f'|format(event.peak_dbfs) }} dBFS</p>
+    <p><strong>Szczyt:</strong> {{ format_dbfs(event.peak_dbfs) }}</p>
+    {% if event.user_label %}
+      <p><strong>Ręczna korekta:</strong> {{ translate_label(event.user_label) }}</p>
+    {% endif %}
     {% if event.clip_path %}
       <audio controls preload="none" src="{{ url_for('clip_audio', event_id=event.id) }}"></audio>
     {% else %}
       <p>Brak klipu audio lub klip został usunięty przez retencję.</p>
     {% endif %}
+    <form method="post" action="{{ url_for('update_event_label', event_id=event.id) }}">
+      <label for="user_label"><strong>Popraw klasyfikację</strong></label>
+      <select id="user_label" name="user_label">
+        <option value="">Brak ręcznej korekty</option>
+        {% for option in manual_label_options %}
+          <option value="{{ option.value }}" {% if event.user_label == option.value %}selected{% endif %}>{{ option.label }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit">Zapisz</button>
+    </form>
   </section>
 
   <section class="card">
@@ -47,7 +65,7 @@
               <div class="decision-header">
                 <div>
                   <p class="label">Wynik</p>
-                  <strong>{{ category_labels.get(decision.category, decision.category) }}</strong>
+                  <strong>{{ translate_label(decision.category) }}</strong>
                 </div>
                 <div>
                   <p class="label">Pewność</p>
@@ -57,9 +75,15 @@
 
               <div class="detail-grid">
                 <p><strong>Ścieżka identyfikacji:</strong> {{ trace.source_label }}</p>
-                <p><strong>Klasyfikator:</strong> {{ trace.classifier_name }} v{{ trace.classifier_version }}</p>
+                <p><strong>Klasyfikator:</strong> {{ trace.classifier_label }} v{{ trace.classifier_version }}</p>
                 <p><strong>Zewnętrzne API:</strong> {{ trace.external_api_name if trace.used_external_api else 'nie' }}</p>
-                <p><strong>Cache reuse:</strong> {{ 'tak' if trace.cache_hit else 'nie' }}</p>
+                <p><strong>Użyto cache:</strong> {{ 'tak' if trace.cache_hit else 'nie' }}</p>
+                {% if trace.resolved_label %}
+                  <p><strong>Główna etykieta YAMNet:</strong> {{ translate_label(trace.resolved_label) }}{% if trace.resolved_label_score is not none %} ({{ '%.3f'|format(trace.resolved_label_score) }}){% endif %}</p>
+                {% endif %}
+                {% if trace.cache_category_promoted %}
+                  <p><strong>Promocja kategorii z cache:</strong> użyto etykiety YAMNet zamiast starego fallbacku</p>
+                {% endif %}
                 {% if trace.cache_hit and trace.cache_similarity is not none %}
                   <p><strong>Podobieństwo cache:</strong> {{ '%.4f'|format(trace.cache_similarity) }}</p>
                 {% endif %}
@@ -77,10 +101,10 @@
                   <ul class="plain-list compact-list">
                     {% for label in trace.top_labels %}
                       <li>
-                        <span>{{ label.label }}</span>
+                        <span>{{ translate_label(label.label) }}</span>
                         <strong>
-                          {% if label.mean_score is not none %}mean {{ '%.3f'|format(label.mean_score) }}{% endif %}
-                          {% if label.peak_score is not none %} / peak {{ '%.3f'|format(label.peak_score) }}{% endif %}
+                          {% if label.mean_score is not none %}średnia {{ '%.3f'|format(label.mean_score) }}{% endif %}
+                          {% if label.peak_score is not none %} / szczyt {{ '%.3f'|format(label.peak_score) }}{% endif %}
                         </strong>
                       </li>
                     {% endfor %}
@@ -90,11 +114,11 @@
 
               {% if trace.category_scores %}
                 <div class="decision-section">
-                  <p class="label">Score kategorii domenowych</p>
+                  <p class="label">Oceny kategorii domenowych</p>
                   <ul class="plain-list compact-list">
                     {% for item in trace.category_scores %}
                       <li>
-                        <span>{{ category_labels.get(item.category, item.category) }}</span>
+                        <span>{{ translate_label(item.category) }}</span>
                         <strong>{{ '%.3f'|format(item.score) }}</strong>
                       </li>
                     {% endfor %}

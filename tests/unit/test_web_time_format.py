@@ -4,17 +4,22 @@ import os
 import time
 from collections import namedtuple
 from pathlib import Path
+from subprocess import CompletedProcess
 
 import pytest
 
 from app.config import AppConfig, StorageConfig
 from app.web.app import (
     _describe_classifier_decision,
+    _format_dbfs,
     _format_local_timestamp,
     _read_cpu_load_percent,
+    _read_cpu_temperature_c,
     _read_disk_free_gb,
     _read_memory_available_gb,
     _read_system_status,
+    _translate_classifier_name,
+    _translate_label,
 )
 
 
@@ -45,6 +50,12 @@ def test_format_local_timestamp_returns_original_on_parse_error() -> None:
     assert _format_local_timestamp("not-a-timestamp") == "not-a-timestamp"
 
 
+def test_format_dbfs_normalizes_negative_zero() -> None:
+    assert _format_dbfs(-0.00003) == "0.0 dBFS"
+    assert _format_dbfs(0.0) == "0.0 dBFS"
+    assert _format_dbfs(-12.34) == "-12.3 dBFS"
+
+
 def test_describe_classifier_decision_marks_cache_reuse() -> None:
     trace = _describe_classifier_decision(
         {
@@ -65,6 +76,8 @@ def test_describe_classifier_decision_marks_cache_reuse() -> None:
     assert trace["cache_source_event_id"] == 42
     assert trace["top_labels"][0]["label"] == "Siren"
     assert trace["category_scores"][0]["category"] == "ambulance"
+    assert trace["classifier_label"] == "Lokalny YAMNet (LiteRT)"
+    assert trace["source_label"] == "Ponowne użycie z lokalnego cache"
 
 
 def test_describe_classifier_decision_marks_external_api_when_present() -> None:
@@ -91,6 +104,23 @@ def test_read_cpu_load_percent(monkeypatch: pytest.MonkeyPatch) -> None:
     assert _read_cpu_load_percent() == 37.5
 
 
+def test_read_cpu_temperature_from_sysfs(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("app.web.app.Path.exists", lambda self: True)
+    monkeypatch.setattr("app.web.app.Path.read_text", lambda self, encoding="utf-8": "48678\n")
+
+    assert _read_cpu_temperature_c() == 48.7
+
+
+def test_read_cpu_temperature_from_vcgencmd_when_sysfs_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("app.web.app.Path.exists", lambda self: False)
+    monkeypatch.setattr(
+        "app.web.app.subprocess.run",
+        lambda *args, **kwargs: CompletedProcess(args=args[0], returncode=0, stdout="temp=51.2'C\n", stderr=""),
+    )
+
+    assert _read_cpu_temperature_c() == 51.2
+
+
 def test_read_memory_and_disk_and_compose_system_status(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -104,6 +134,11 @@ def test_read_memory_and_disk_and_compose_system_status(
     )
     monkeypatch.setattr("app.web.app.os.cpu_count", lambda: 2)
     monkeypatch.setattr("app.web.app.os.getloadavg", lambda: (0.5, 0.4, 0.3))
+    monkeypatch.setattr("app.web.app.Path.exists", lambda self: True)
+    monkeypatch.setattr(
+        "app.web.app.Path.read_text",
+        lambda self, encoding="utf-8": "52000\n" if str(self) == "/sys/class/thermal/thermal_zone0/temp" else meminfo,
+    )
 
     config = AppConfig(
         base_dir=tmp_path,
@@ -114,5 +149,13 @@ def test_read_memory_and_disk_and_compose_system_status(
     assert _read_memory_available_gb() == 1.0
     assert _read_disk_free_gb(tmp_path) == 7.0
     assert status["cpu_percent"] == 25.0
+    assert status["cpu_temperature_c"] == 52.0
     assert status["memory_available_gb"] == 1.0
     assert status["disk_free_gb"] == 7.0
+
+
+def test_translate_label_and_classifier_name() -> None:
+    assert _translate_label("Speech") == "Mowa"
+    assert _translate_label("ambulance") == "Karetka / syrena karetki"
+    assert _translate_label("speech") == "Mowa ludzka"
+    assert _translate_classifier_name("yamnet_litert") == "Lokalny YAMNet (LiteRT)"

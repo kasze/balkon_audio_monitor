@@ -12,14 +12,14 @@
       <p class="label">Poziom tła</p>
       <h2>
         {% if dashboard.summary.avg_dbfs is not none %}
-          {{ '%.1f'|format(dashboard.summary.avg_dbfs) }} dBFS
+          {{ format_dbfs(dashboard.summary.avg_dbfs) }}
         {% else %}
           brak danych
         {% endif %}
       </h2>
       <p>
         {% if dashboard.summary.max_dbfs is not none %}
-          Maksimum: {{ '%.1f'|format(dashboard.summary.max_dbfs) }} dBFS
+          Maksimum: {{ format_dbfs(dashboard.summary.max_dbfs) }}
         {% else %}
           Oczekiwanie na pierwszy interwał
         {% endif %}
@@ -29,7 +29,7 @@
 
   {{ render_chart_card("Ostatnia godzina hałasu", recent_chart, "Wykres hałasu z ostatniej godziny", "Brak danych z ostatniej godziny.") }}
 
-  {{ render_chart_card("Wykres hałasu (średnia godzinowa)", chart, "Wykres godzinowego hałasu", "Brak danych godzinowych.") }}
+  {{ render_chart_card("Wykres hałasu (średnia co 10 minut)", chart, "Wykres hałasu ze średnią co 10 minut", "Brak danych 10-minutowych.") }}
 
   <section class="grid two">
     <article class="card">
@@ -38,7 +38,7 @@
         <ul class="plain-list">
           {% for row in dashboard.categories %}
             <li>
-              <span><a href="{{ url_for('category_events', category=row.category) }}">{{ category_labels.get(row.category, row.category) }}</a></span>
+              <span><a href="{{ url_for('category_events', category=row.category) }}">{{ translate_label(row.category) }}</a></span>
               <strong>{{ row.total }}</strong>
             </li>
           {% endfor %}
@@ -68,9 +68,9 @@
             <tr>
               <td><a href="{{ url_for('event_details', event_id=row.id) }}">#{{ row.id }}</a></td>
               <td>{{ row.started_at }}</td>
-              <td><a href="{{ url_for('category_events', category=row.category) }}">{{ category_labels.get(row.category, row.category) }}</a></td>
+              <td><a href="{{ url_for('category_events', category=row.category) }}">{{ translate_label(row.category) }}</a></td>
               <td>{{ '%.1f'|format(row.duration_seconds) }} s</td>
-              <td>{{ '%.1f'|format(row.peak_dbfs) }} dBFS</td>
+              <td>{{ format_dbfs(row.peak_dbfs) }}</td>
               <td>{{ '%.2f'|format(row.confidence) }}</td>
             </tr>
           {% endfor %}
@@ -85,7 +85,14 @@
     (() => {
       const chartState = new WeakMap();
 
-      const formatTooltip = (label, value) => `${String(label).slice(0, 5)} • ${value.toFixed(1)} dBFS`;
+      const normalizeDbfs = (value, decimals = 1) => {
+        const threshold = 0.5 * (10 ** (-decimals));
+        return Math.abs(value) < threshold ? 0 : value;
+      };
+
+      const formatDbfs = (value, decimals = 1) => `${normalizeDbfs(value, decimals).toFixed(decimals)} dBFS`;
+
+      const formatTooltip = (label, value) => `${String(label).slice(0, 5)} • ${formatDbfs(value)}`;
 
       const positionForIndex = (index, count, plotWidth, paddingLeft) =>
         paddingLeft + (plotWidth / Math.max(count - 1, 1)) * index;
@@ -109,7 +116,7 @@
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.clearRect(0, 0, width, height);
 
-        const padding = { top: 12, right: 12, bottom: 40, left: 12 };
+        const padding = { top: 16, right: 72, bottom: 40, left: 12 };
         const plotWidth = width - padding.left - padding.right;
         const plotHeight = height - padding.top - padding.bottom;
         const minValue = Number(canvas.dataset.min || Math.min(...values));
@@ -117,7 +124,7 @@
         const span = Math.max(maxValue - minValue, 1);
         chartState.set(canvas, { labels, values, minValue, maxValue, span, padding, plotWidth, plotHeight, width, height });
 
-        ctx.strokeStyle = "rgba(21, 33, 29, 0.08)";
+        ctx.strokeStyle = "rgba(125, 148, 192, 0.22)";
         ctx.lineWidth = 1;
         for (let i = 0; i < 3; i += 1) {
           const y = padding.top + (plotHeight / 2) * i;
@@ -127,8 +134,13 @@
           ctx.stroke();
         }
 
-        ctx.strokeStyle = "#1e6f5c";
-        ctx.lineWidth = 3;
+        const gradient = ctx.createLinearGradient(padding.left, padding.top, width - padding.right, padding.top + plotHeight);
+        gradient.addColorStop(0, "rgba(126, 203, 255, 0.95)");
+        gradient.addColorStop(0.45, "rgba(63, 130, 255, 0.98)");
+        gradient.addColorStop(1, "rgba(16, 48, 126, 0.96)");
+
+        ctx.strokeStyle = gradient;
+        ctx.lineWidth = 3.5;
         ctx.lineJoin = "round";
         ctx.lineCap = "round";
         ctx.beginPath();
@@ -155,8 +167,8 @@
           ticks.push(labels.length - 1);
         }
 
-        ctx.fillStyle = "#5d6b64";
-        ctx.font = "12px serif";
+        ctx.fillStyle = "rgba(63, 78, 113, 0.76)";
+        ctx.font = '600 12px "SF Pro Text", "SF Pro Display", "Helvetica Neue", "Segoe UI", sans-serif';
         ctx.textBaseline = "top";
         ticks.forEach((index, tickIndex) => {
           const x = positionForIndex(index, labels.length, plotWidth, padding.left);
@@ -170,6 +182,13 @@
           ctx.textAlign = textAlign;
           ctx.fillText(label, x, height - padding.bottom + 14);
         });
+
+        ctx.fillStyle = "rgba(56, 73, 112, 0.84)";
+        ctx.font = '600 12px "SF Pro Text", "SF Pro Display", "Helvetica Neue", "Segoe UI", sans-serif';
+        ctx.textAlign = "left";
+        ctx.textBaseline = "middle";
+        ctx.fillText(formatDbfs(maxValue), width - padding.right + 10, padding.top + 2);
+        ctx.fillText(formatDbfs(minValue), width - padding.right + 10, padding.top + plotHeight - 2);
       };
 
       const showTooltip = (canvas, event) => {

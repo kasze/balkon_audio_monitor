@@ -4,12 +4,14 @@ from app.models import ClassifierDecision, EventSummary
 
 
 CATEGORY_LABELS = {
-    "ambulance": "Ambulance / syrena karetki",
-    "police": "Policja / syrena policyjna",
-    "fire_truck": "Straż pożarna / syrena strażacka",
+    "ambulance": "Karetka / syrena karetki",
+    "police": "Policja / syrena radiowozu",
+    "fire_truck": "Straż pożarna / syrena wozu strażackiego",
     "airplane": "Samolot",
     "helicopter": "Śmigłowiec",
     "street_background": "Nieokreślony hałas uliczny / tło",
+    "speech": "Mowa ludzka",
+    "other_detected": "Inny rozpoznany dźwięk",
 }
 
 

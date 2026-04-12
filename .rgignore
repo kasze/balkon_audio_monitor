@@ -1,0 +1,14 @@
+.git/
+.venv/
+.pytest_cache/
+.mypy_cache/
+__pycache__/
+data/db/
+data/clips/
+models/
+sample_audio/*.wav
+app/web/static/*.jpg
+*.sqlite3
+*.wav
+*.tflite
+*.log

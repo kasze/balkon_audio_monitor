@@ -65,6 +65,23 @@ Lekki projekt do 24/7 monitoringu dzwiekow na balkonie na Raspberry Pi 3 B+ z US
 
 Panel: [http://127.0.0.1:8080](http://127.0.0.1:8080)
 
+## GitHub / publikacja
+
+Repo jest przygotowane tak, zeby mozna je bylo wrzucic publicznie bez lokalnych artefaktow:
+
+- prywatne nadpisania deploy trzymaj w `configs/deploy.env`, ktory jest ignorowany przez Git
+- publiczny przyklad jest w [configs/deploy.env.example](/Users/kasze/audio_monitor/configs/deploy.env.example)
+- modele, baza SQLite, clipy WAV, logi i lokalne cache nie wchodza do repo
+- jesli uzywasz hasla SSH, trzymaj je w lokalnym sekrecie i odczytuj przez `AUDIO_MONITOR_SSH_PASSWORD_SECRET_CMD`
+
+Jesli chcesz ustawic swoj host deploy bez podawania argumentow w CLI:
+
+```bash
+cp configs/deploy.env.example configs/deploy.env
+```
+
+Potem edytuj `AUDIO_MONITOR_TARGET` i opcjonalnie `AUDIO_MONITOR_REMOTE_DIR`.
+
 ## Tryb offline
 
 Pojedynczy plik WAV:
@@ -134,8 +151,38 @@ Jesli usluga juz trzyma input, `check-audio` zwroci komunikat o zajetym urzadzen
 Przykladowy deploy do `/opt/audio-monitor`:
 
 ```bash
+./scripts/deploy.sh
+```
+
+Domyslnie skrypt uzywa:
+- `AUDIO_MONITOR_TARGET=pi@raspberrypi.local`
+- `AUDIO_MONITOR_REMOTE_DIR=/opt/audio-monitor`
+
+Mozesz je nadpisac przez `configs/deploy.env`, zmienne srodowiskowe albo argumenty CLI:
+
+```bash
 ./scripts/deploy.sh pi@raspberrypi.local /opt/audio-monitor
 ```
+
+Skrypt pokazuje teraz etapy deployu i obsluguje opcjonalne haslo SSH z sekretu. Przyklad na macOS:
+
+```bash
+security add-generic-password -a pi -s audio-monitor-rpi -w
+```
+
+W `configs/deploy.env`:
+
+```bash
+AUDIO_MONITOR_SSH_PASSWORD_SECRET_CMD='security find-generic-password -a pi -s audio-monitor-rpi -w'
+```
+
+Mozesz tez wpisac plain haslo bezposrednio w lokalnym `configs/deploy.env`:
+
+```bash
+AUDIO_MONITOR_SSH_PASSWORD='twoje-haslo'
+```
+
+Przy hasle deploy uzyje `sshpass`, a jesli go nie ma, sprobuje lokalnego `expect`. Bez tego deploy nadal dziala normalnie przez klucze SSH albo interaktywne haslo.
 
 Skrypt:
 - synchronizuje repo przez `rsync`
@@ -186,6 +233,22 @@ Na laptopie bez mikrofonu USB:
 ```bash
 SKIP_AUDIO=1 ./scripts/smoke_test.sh configs/config.yaml
 ```
+
+## Testy i pelny workflow
+
+Testy:
+
+```bash
+./scripts/test.sh
+```
+
+Testy + deploy:
+
+```bash
+./scripts/test_and_deploy.sh
+```
+
+Skrypty nie wymagaja argumentow, jesli wystarcza Ci domyslne ustawienia albo `configs/deploy.env`.
 
 ## Retencja clipow
 
