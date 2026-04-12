@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import shutil
 from datetime import datetime
 from pathlib import Path
 
@@ -20,6 +22,7 @@ def create_app(repository: SQLiteRepository, status: RuntimeStatus, config: AppC
             "category_labels": CATEGORY_LABELS,
             "describe_classifier_decision": _describe_classifier_decision,
             "format_local_timestamp": _format_local_timestamp,
+            "system_status": _read_system_status(config),
             "status": status.snapshot(),
         }
 
@@ -53,6 +56,7 @@ def create_app(repository: SQLiteRepository, status: RuntimeStatus, config: AppC
     def health():
         snapshot = status.snapshot()
         snapshot["database_path"] = str(config.storage.database_path)
+        snapshot["system_status"] = _read_system_status(config)
         return jsonify(snapshot)
 
     return app
@@ -167,3 +171,42 @@ def _describe_classifier_decision(decision: dict[str, object]) -> dict[str, obje
         "top_labels": top_labels,
         "category_scores": category_scores,
     }
+
+
+def _read_system_status(config: AppConfig) -> dict[str, object]:
+    return {
+        "cpu_percent": _read_cpu_load_percent(),
+        "memory_available_gb": _read_memory_available_gb(),
+        "disk_free_gb": _read_disk_free_gb(config.storage.database_path.parent),
+    }
+
+
+def _read_cpu_load_percent() -> float | None:
+    try:
+        cpu_count = max(os.cpu_count() or 1, 1)
+        load_avg, _, _ = os.getloadavg()
+    except (AttributeError, OSError):
+        return None
+    return round((load_avg / cpu_count) * 100.0, 1)
+
+
+def _read_memory_available_gb() -> float | None:
+    meminfo_path = Path("/proc/meminfo")
+    try:
+        for line in meminfo_path.read_text(encoding="utf-8").splitlines():
+            if line.startswith("MemAvailable:"):
+                parts = line.split()
+                if len(parts) >= 2:
+                    return round(int(parts[1]) / (1024 * 1024), 2)
+    except (OSError, ValueError):
+        return None
+    return None
+
+
+def _read_disk_free_gb(path: Path) -> float | None:
+    probe_path = path if path.exists() else path.parent
+    try:
+        usage = shutil.disk_usage(probe_path)
+    except OSError:
+        return None
+    return round(usage.free / (1024 * 1024 * 1024), 2)

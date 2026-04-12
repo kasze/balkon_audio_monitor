@@ -2,10 +2,20 @@ from __future__ import annotations
 
 import os
 import time
+from collections import namedtuple
+from pathlib import Path
 
 import pytest
 
-from app.web.app import _describe_classifier_decision, _format_local_timestamp
+from app.config import AppConfig, StorageConfig
+from app.web.app import (
+    _describe_classifier_decision,
+    _format_local_timestamp,
+    _read_cpu_load_percent,
+    _read_disk_free_gb,
+    _read_memory_available_gb,
+    _read_system_status,
+)
 
 
 @pytest.fixture
@@ -72,3 +82,37 @@ def test_describe_classifier_decision_marks_external_api_when_present() -> None:
     assert trace["source"] == "external_api"
     assert trace["used_external_api"] is True
     assert trace["external_api_name"] == "BirdNET Cloud"
+
+
+def test_read_cpu_load_percent(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("app.web.app.os.cpu_count", lambda: 4)
+    monkeypatch.setattr("app.web.app.os.getloadavg", lambda: (1.5, 1.0, 0.5))
+
+    assert _read_cpu_load_percent() == 37.5
+
+
+def test_read_memory_and_disk_and_compose_system_status(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    DiskUsage = namedtuple("DiskUsage", ["total", "used", "free"])
+    meminfo = "MemTotal:       2048000 kB\nMemAvailable:   1048576 kB\n"
+    monkeypatch.setattr("app.web.app.Path.read_text", lambda self, encoding="utf-8": meminfo)
+    monkeypatch.setattr(
+        "app.web.app.shutil.disk_usage",
+        lambda _path: DiskUsage(total=10, used=3, free=7 * 1024 * 1024 * 1024),
+    )
+    monkeypatch.setattr("app.web.app.os.cpu_count", lambda: 2)
+    monkeypatch.setattr("app.web.app.os.getloadavg", lambda: (0.5, 0.4, 0.3))
+
+    config = AppConfig(
+        base_dir=tmp_path,
+        storage=StorageConfig(database_path=tmp_path / "db.sqlite3", clip_dir=tmp_path / "clips"),
+    )
+    status = _read_system_status(config)
+
+    assert _read_memory_available_gb() == 1.0
+    assert _read_disk_free_gb(tmp_path) == 7.0
+    assert status["cpu_percent"] == 25.0
+    assert status["memory_available_gb"] == 1.0
+    assert status["disk_free_gb"] == 7.0
