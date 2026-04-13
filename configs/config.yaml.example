@@ -8,21 +8,21 @@ audio:
 
 detection:
   initial_noise_floor_dbfs: -58.0
-  activation_margin_db: 9.0
+  activation_margin_db: 11.0
   release_margin_db: 4.0
-  min_event_dbfs: -48.0
-  min_active_frames: 2
-  max_inactive_frames: 3
+  min_event_dbfs: -44.0
+  min_active_frames: 3
+  max_inactive_frames: 2
   noise_floor_alpha: 0.04
 
 aggregation:
   noise_interval_seconds: 5.0
   pre_roll_seconds: 1.0
-  post_roll_seconds: 1.0
+  post_roll_seconds: 0.5
   min_event_seconds: 1.0
   focus_clip_seconds: 8.0
   max_clip_seconds: 30.0
-  max_event_seconds: 90.0
+  max_event_seconds: 25.0
 
 classifier:
   backend: yamnet

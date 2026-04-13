@@ -9,17 +9,556 @@ from pathlib import Path
 
 from flask import Flask, abort, jsonify, redirect, render_template, request, send_file, url_for
 
+from app.audio_devices import AudioCaptureError, list_capture_devices
 from app.classify.heuristics import CATEGORY_LABELS
-from app.config import AppConfig
+from app.config import (
+    AggregationConfig,
+    AppConfig,
+    AudioConfig,
+    ClassifierConfig,
+    DetectionConfig,
+    LoggingConfig,
+    StorageConfig,
+    WebConfig,
+    load_config,
+    save_config,
+)
 from app.pipeline import RuntimeStatus
 from app.storage.database import SQLiteRepository
 
 CLASSIFIER_LABELS = {
     "yamnet_litert": "Lokalny YAMNet (LiteRT)",
     "heuristic_baseline": "Heurystyczny klasyfikator bazowy",
-    "heuristic_fallback": "Heurystyczny fallback",
+    "heuristic_fallback": "Heurystyczny tryb awaryjny",
     "birdnet_remote": "Zdalny BirdNET",
 }
+
+WORKER_STATE_LABELS = {
+    "idle": "bezczynny",
+    "running": "działa",
+    "starting": "uruchamianie",
+    "degraded": "ograniczony",
+    "error": "błąd",
+    "stopped": "zatrzymany",
+}
+
+SETTINGS_PRESETS = {
+    "balcony_city": {
+        "label": "Balkon miejski",
+        "description": "Mniej czuły na stały szum uliczny, lepszy do monitoringu zewnętrznego.",
+        "detection": {
+            "activation_margin_db": 12.0,
+            "min_event_dbfs": -43.0,
+            "min_active_frames": 3,
+            "max_inactive_frames": 2,
+        },
+        "aggregation": {
+            "post_roll_seconds": 0.5,
+            "max_event_seconds": 20.0,
+            "focus_clip_seconds": 8.0,
+        },
+    },
+    "yard_birds": {
+        "label": "Ogród / ptaki",
+        "description": "Bardziej czuły na krótkie i delikatniejsze sygnały, dobry do ptaków i przyrody.",
+        "detection": {
+            "activation_margin_db": 8.0,
+            "min_event_dbfs": -50.0,
+            "min_active_frames": 2,
+            "max_inactive_frames": 3,
+        },
+        "aggregation": {
+            "post_roll_seconds": 1.0,
+            "max_event_seconds": 18.0,
+            "focus_clip_seconds": 10.0,
+        },
+    },
+    "room": {
+        "label": "Pokój / wnętrze",
+        "description": "Zrównoważony profil do mowy i typowych dźwięków w pomieszczeniu.",
+        "detection": {
+            "activation_margin_db": 9.0,
+            "min_event_dbfs": -47.0,
+            "min_active_frames": 2,
+            "max_inactive_frames": 2,
+        },
+        "aggregation": {
+            "post_roll_seconds": 0.5,
+            "max_event_seconds": 15.0,
+            "focus_clip_seconds": 6.0,
+        },
+    },
+    "custom": {
+        "label": "Własne ustawienia",
+        "description": "Nie nadpisuje suwaków. Użyj, jeśli chcesz stroić parametry ręcznie.",
+    },
+}
+
+SETTINGS_SECTIONS = (
+    {
+        "id": "preset",
+        "title": "Preset czułości",
+        "fields": (
+            {
+                "name": "preset",
+                "label": "Profil pracy",
+                "kind": "radio",
+                "description": "Szybki wybór zestawu parametrów pod typowe zastosowanie.",
+                "options": [
+                    {"value": key, "label": value["label"], "description": value["description"]}
+                    for key, value in SETTINGS_PRESETS.items()
+                ],
+            },
+        ),
+    },
+    {
+        "id": "audio",
+        "title": "Audio",
+        "fields": (
+            {
+                "name": "audio.arecord_device_mode",
+                "label": "Wybór wejścia audio",
+                "kind": "radio",
+                "description": "Auto wybiera najlepsze wejście capture. Ręczny wybór wymusza konkretne urządzenie.",
+                "options": [
+                    {"value": "auto", "label": "Automatyczny wybór"},
+                    {"value": "manual", "label": "Ręczny wybór"},
+                ],
+            },
+            {
+                "name": "audio.arecord_device",
+                "label": "Urządzenie capture",
+                "kind": "select",
+                "description": "Lista urządzeń wykrytych przez `arecord -l`.",
+            },
+            {
+                "name": "audio.sample_rate",
+                "label": "Częstotliwość próbkowania",
+                "kind": "select",
+                "description": "Wyższa wartość daje więcej detali, ale zwiększa obciążenie CPU.",
+                "options": [
+                    {"value": "8000", "label": "8 kHz"},
+                    {"value": "16000", "label": "16 kHz"},
+                    {"value": "32000", "label": "32 kHz"},
+                    {"value": "48000", "label": "48 kHz"},
+                ],
+            },
+            {
+                "name": "audio.channels",
+                "label": "Kanały audio",
+                "kind": "radio",
+                "description": "Mono jest lżejsze i zwykle wystarcza do monitoringu.",
+                "options": [
+                    {"value": "1", "label": "Mono"},
+                    {"value": "2", "label": "Stereo"},
+                ],
+            },
+            {
+                "name": "audio.frame_duration_seconds",
+                "label": "Długość ramki analizy",
+                "kind": "range",
+                "description": "Krótsze ramki szybciej reagują, dłuższe są stabilniejsze na tle.",
+                "min": 0.25,
+                "max": 1.0,
+                "step": 0.05,
+                "unit": "s",
+            },
+            {
+                "name": "audio.retry_backoff_seconds",
+                "label": "Czas ponownej próby po błędzie wejścia",
+                "kind": "range",
+                "description": "Ile sekund czekać przed następną próbą otwarcia urządzenia audio.",
+                "min": 1.0,
+                "max": 30.0,
+                "step": 1.0,
+                "unit": "s",
+            },
+        ),
+    },
+    {
+        "id": "detection",
+        "title": "Detekcja zdarzeń",
+        "fields": (
+            {
+                "name": "detection.initial_noise_floor_dbfs",
+                "label": "Początkowy poziom tła",
+                "kind": "range",
+                "description": "Niższa wartość oznacza, że system startuje z założeniem cichszego otoczenia.",
+                "min": -80.0,
+                "max": -30.0,
+                "step": 1.0,
+                "unit": "dBFS",
+            },
+            {
+                "name": "detection.activation_margin_db",
+                "label": "Próg aktywacji ponad tło",
+                "kind": "range",
+                "description": "Im wyżej, tym trudniej wywołać zdarzenie samym szumem tła.",
+                "min": 4.0,
+                "max": 20.0,
+                "step": 0.5,
+                "unit": "dB",
+            },
+            {
+                "name": "detection.release_margin_db",
+                "label": "Próg podtrzymania zdarzenia",
+                "kind": "range",
+                "description": "Niższa wartość wydłuża zdarzenia, wyższa szybciej je kończy.",
+                "min": 1.0,
+                "max": 12.0,
+                "step": 0.5,
+                "unit": "dB",
+            },
+            {
+                "name": "detection.min_event_dbfs",
+                "label": "Minimalna głośność zdarzenia",
+                "kind": "range",
+                "description": "Dolny próg głośności. Pomaga odsiać bardzo ciche tło.",
+                "min": -70.0,
+                "max": -20.0,
+                "step": 1.0,
+                "unit": "dBFS",
+            },
+            {
+                "name": "detection.min_active_frames",
+                "label": "Minimalna liczba aktywnych ramek",
+                "kind": "range",
+                "description": "Więcej ramek zmniejsza fałszywe alarmy, ale opóźnia start zdarzenia.",
+                "min": 1,
+                "max": 8,
+                "step": 1,
+                "unit": "ramek",
+            },
+            {
+                "name": "detection.max_inactive_frames",
+                "label": "Dopuszczalna liczba cichych ramek w środku zdarzenia",
+                "kind": "range",
+                "description": "Wyższa wartość bardziej skleja przerywane dźwięki w jeden event.",
+                "min": 1,
+                "max": 8,
+                "step": 1,
+                "unit": "ramek",
+            },
+            {
+                "name": "detection.noise_floor_alpha",
+                "label": "Szybkość uczenia poziomu tła",
+                "kind": "range",
+                "description": "Wyżej = szybsza adaptacja do zmian tła. Niżej = większa stabilność.",
+                "min": 0.01,
+                "max": 0.20,
+                "step": 0.01,
+                "unit": "",
+            },
+        ),
+    },
+    {
+        "id": "aggregation",
+        "title": "Łączenie i cięcie zdarzeń",
+        "fields": (
+            {
+                "name": "aggregation.noise_interval_seconds",
+                "label": "Okno statystyk hałasu",
+                "kind": "range",
+                "description": "Jak długie interwały trafiają do statystyk wykresów.",
+                "min": 1.0,
+                "max": 30.0,
+                "step": 1.0,
+                "unit": "s",
+            },
+            {
+                "name": "aggregation.pre_roll_seconds",
+                "label": "Pre-roll",
+                "kind": "range",
+                "description": "Ile sekund dodać przed wykrytym początkiem zdarzenia.",
+                "min": 0.0,
+                "max": 5.0,
+                "step": 0.5,
+                "unit": "s",
+            },
+            {
+                "name": "aggregation.post_roll_seconds",
+                "label": "Post-roll",
+                "kind": "range",
+                "description": "Ile ciszy jeszcze trzymać w tym samym zdarzeniu po ustaniu sygnału.",
+                "min": 0.0,
+                "max": 5.0,
+                "step": 0.5,
+                "unit": "s",
+            },
+            {
+                "name": "aggregation.min_event_seconds",
+                "label": "Minimalny czas zdarzenia",
+                "kind": "range",
+                "description": "Krótsze epizody są odrzucane jako zbyt krótkie.",
+                "min": 0.5,
+                "max": 10.0,
+                "step": 0.5,
+                "unit": "s",
+            },
+            {
+                "name": "aggregation.focus_clip_seconds",
+                "label": "Długość próbki do odsłuchu i klasyfikacji",
+                "kind": "range",
+                "description": "Jak długi wycinek zapisać wokół najmocniejszego fragmentu zdarzenia.",
+                "min": 2.0,
+                "max": 20.0,
+                "step": 1.0,
+                "unit": "s",
+            },
+            {
+                "name": "aggregation.max_clip_seconds",
+                "label": "Maksymalna długość pełnego klipu roboczego",
+                "kind": "range",
+                "description": "Twardy limit dla bufora audio przed wycięciem focus clipu.",
+                "min": 5.0,
+                "max": 60.0,
+                "step": 1.0,
+                "unit": "s",
+            },
+            {
+                "name": "aggregation.max_event_seconds",
+                "label": "Maksymalny czas pojedynczego zdarzenia",
+                "kind": "range",
+                "description": "Chroni przed ciągnięciem jednego eventu przez długie tło lub ciągły hałas.",
+                "min": 5.0,
+                "max": 120.0,
+                "step": 1.0,
+                "unit": "s",
+            },
+        ),
+    },
+    {
+        "id": "classifier",
+        "title": "Klasyfikacja",
+        "fields": (
+            {
+                "name": "classifier.backend",
+                "label": "Backend klasyfikacji",
+                "kind": "radio",
+                "description": "YAMNet daje pełną klasyfikację. Heurystyka to lżejszy tryb awaryjny.",
+                "options": [
+                    {"value": "yamnet", "label": "YAMNet"},
+                    {"value": "heuristic", "label": "Heurystyka"},
+                ],
+            },
+            {
+                "name": "classifier.yamnet_num_threads",
+                "label": "Liczba wątków YAMNet",
+                "kind": "range",
+                "description": "Więcej wątków może przyspieszyć analizę kosztem CPU.",
+                "min": 1,
+                "max": 4,
+                "step": 1,
+                "unit": "wątki",
+            },
+            {
+                "name": "classifier.yamnet_max_analysis_seconds",
+                "label": "Maksymalny czas próbki dla YAMNet",
+                "kind": "range",
+                "description": "Dłuższy fragment może dać lepszą klasyfikację, ale kosztuje więcej CPU.",
+                "min": 2.0,
+                "max": 30.0,
+                "step": 1.0,
+                "unit": "s",
+            },
+            {
+                "name": "classifier.yamnet_max_windows",
+                "label": "Maksymalna liczba okien analizy",
+                "kind": "range",
+                "description": "Ogranicza koszt obliczeń dla długich próbek.",
+                "min": 4,
+                "max": 64,
+                "step": 1,
+                "unit": "okien",
+            },
+            {
+                "name": "classifier.yamnet_min_category_score",
+                "label": "Minimalny score kategorii YAMNet",
+                "kind": "range",
+                "description": "Wyższa wartość daje mniej, ale pewniejszych klasyfikacji.",
+                "min": 0.01,
+                "max": 0.50,
+                "step": 0.01,
+                "unit": "",
+            },
+            {
+                "name": "classifier.yamnet_top_k",
+                "label": "Liczba top etykiet YAMNet",
+                "kind": "range",
+                "description": "Ile najwyżej ocenionych klas pokazać w śladzie klasyfikacji.",
+                "min": 3,
+                "max": 15,
+                "step": 1,
+                "unit": "etykiet",
+            },
+            {
+                "name": "classifier.birdnet_timeout_seconds",
+                "label": "Timeout BirdNET",
+                "kind": "range",
+                "description": "Maksymalny czas oczekiwania na odpowiedź API BirdNET.",
+                "min": 3.0,
+                "max": 60.0,
+                "step": 1.0,
+                "unit": "s",
+            },
+            {
+                "name": "classifier.birdnet_min_confidence",
+                "label": "Minimalna pewność BirdNET",
+                "kind": "range",
+                "description": "Niżej = więcej gatunków, wyżej = bardziej konserwatywne wyniki.",
+                "min": 0.05,
+                "max": 0.95,
+                "step": 0.05,
+                "unit": "",
+            },
+            {
+                "name": "classifier.birdnet_num_results",
+                "label": "Liczba wyników BirdNET",
+                "kind": "range",
+                "description": "Ile najlepszych trafień przechowywać w szczegółach decyzji.",
+                "min": 1,
+                "max": 10,
+                "step": 1,
+                "unit": "wyników",
+            },
+            {
+                "name": "classifier.birdnet_locale",
+                "label": "Język wyników BirdNET",
+                "kind": "select",
+                "description": "Preferowany język nazw zwyczajowych, jeśli serwer BirdNET go obsługuje.",
+                "options": [
+                    {"value": "pl", "label": "Polski"},
+                    {"value": "en", "label": "Angielski"},
+                    {"value": "de", "label": "Niemiecki"},
+                    {"value": "fr", "label": "Francuski"},
+                    {"value": "es", "label": "Hiszpański"},
+                ],
+            },
+            {
+                "name": "classifier.birdnet_api_url",
+                "label": "Adres API BirdNET",
+                "kind": "text",
+                "description": "Adres serwera BirdNET. Zostaw puste, jeśli integracja ma być wyłączona.",
+                "placeholder": "http://host:port",
+            },
+        ),
+    },
+    {
+        "id": "storage",
+        "title": "Przechowywanie",
+        "fields": (
+            {
+                "name": "storage.keep_clips",
+                "label": "Zapisuj próbki audio",
+                "kind": "radio",
+                "description": "Wyłączenie zostawia zdarzenia i statystyki, ale bez plików WAV i widma.",
+                "options": [
+                    {"value": "true", "label": "Tak"},
+                    {"value": "false", "label": "Nie"},
+                ],
+            },
+            {
+                "name": "storage.clip_max_megabytes",
+                "label": "Maksymalny rozmiar katalogu z klipami",
+                "kind": "range",
+                "description": "Po przekroczeniu limitu stare próbki są usuwane przez retencję.",
+                "min": 64,
+                "max": 4096,
+                "step": 64,
+                "unit": "MB",
+            },
+            {
+                "name": "storage.clip_max_age_days",
+                "label": "Maksymalny wiek próbki",
+                "kind": "range",
+                "description": "Po ilu dniach stare próbki mogą zostać usunięte.",
+                "min": 1,
+                "max": 90,
+                "step": 1,
+                "unit": "dni",
+            },
+            {
+                "name": "storage.min_free_disk_megabytes",
+                "label": "Minimalna wolna przestrzeń",
+                "kind": "range",
+                "description": "Rezerwa wolnego miejsca na dysku utrzymywana przez retencję.",
+                "min": 64,
+                "max": 4096,
+                "step": 64,
+                "unit": "MB",
+            },
+            {
+                "name": "storage.database_path",
+                "label": "Ścieżka bazy danych",
+                "kind": "text",
+                "description": "Zmiana wymaga restartu usługi i migracji danych, jeśli baza ma zostać przeniesiona.",
+            },
+            {
+                "name": "storage.clip_dir",
+                "label": "Katalog próbek audio",
+                "kind": "text",
+                "description": "Gdzie zapisywać WAV i obrazy widma.",
+            },
+        ),
+    },
+    {
+        "id": "web",
+        "title": "Panel WWW i logi",
+        "fields": (
+            {
+                "name": "web.host",
+                "label": "Adres nasłuchu panelu",
+                "kind": "select",
+                "description": "0.0.0.0 wystawia panel w sieci, 127.0.0.1 tylko lokalnie.",
+                "options": [
+                    {"value": "0.0.0.0", "label": "0.0.0.0 (cała sieć)"},
+                    {"value": "127.0.0.1", "label": "127.0.0.1 (tylko lokalnie)"},
+                ],
+            },
+            {
+                "name": "web.port",
+                "label": "Port panelu WWW",
+                "kind": "number",
+                "description": "Port nasłuchu interfejsu webowego.",
+                "min": 1024,
+                "max": 65535,
+                "step": 1,
+            },
+            {
+                "name": "web.recent_events_limit",
+                "label": "Liczba ostatnich zdarzeń na panelu",
+                "kind": "range",
+                "description": "Ile najnowszych eventów pokazywać na stronie głównej.",
+                "min": 5,
+                "max": 200,
+                "step": 5,
+                "unit": "zdarzeń",
+            },
+            {
+                "name": "web.dashboard_history_hours",
+                "label": "Zakres historii panelu",
+                "kind": "range",
+                "description": "Ile godzin historii przeznaczyć dla widoków panelu.",
+                "min": 1,
+                "max": 168,
+                "step": 1,
+                "unit": "h",
+            },
+            {
+                "name": "logging.level",
+                "label": "Poziom logowania",
+                "kind": "select",
+                "description": "Ile szczegółów zapisywać do logów aplikacji.",
+                "options": [
+                    {"value": "DEBUG", "label": "DEBUG"},
+                    {"value": "INFO", "label": "INFO"},
+                    {"value": "WARNING", "label": "WARNING"},
+                    {"value": "ERROR", "label": "ERROR"},
+                ],
+            },
+        ),
+    },
+)
 
 YAMNET_LABEL_TRANSLATIONS = {
     "Speech": "Mowa",
@@ -69,27 +608,41 @@ YAMNET_LABEL_TRANSLATIONS = {
 
 def create_app(repository: SQLiteRepository, status: RuntimeStatus, config: AppConfig) -> Flask:
     app = Flask(__name__, template_folder="templates", static_folder="static")
-    manual_label_options = _load_manual_label_options(config.classifier.yamnet_class_map_path)
-    manual_label_values = {item["value"] for item in manual_label_options}
+    config_state = {"value": config}
+
+    def current_config() -> AppConfig:
+        return config_state["value"]
+
+    def current_manual_label_options() -> list[dict[str, str]]:
+        return _load_manual_label_options(current_config().classifier.yamnet_class_map_path)
+
+    def current_manual_label_values() -> set[str]:
+        return {item["value"] for item in current_manual_label_options()}
 
     @app.context_processor
     def inject_helpers() -> dict[str, object]:
+        cfg = current_config()
         return {
             "category_labels": CATEGORY_LABELS,
             "describe_classifier_decision": _describe_classifier_decision,
             "format_dbfs": _format_dbfs,
             "format_local_timestamp": _format_local_timestamp,
             "format_uptime_seconds": _format_uptime_seconds,
-            "manual_label_options": manual_label_options,
+            "format_worker_state": _format_worker_state,
+            "manual_label_options": current_manual_label_options(),
+            "nav_links": _navigation_links(),
+            "settings_sections": SETTINGS_SECTIONS,
+            "settings_presets": SETTINGS_PRESETS,
             "translate_label": _translate_label,
-            "system_status": _read_system_status(config),
+            "system_status": _read_system_status(cfg),
             "status": status.snapshot(),
         }
 
     @app.get("/")
     def index():
+        cfg = current_config()
         today = datetime.now().astimezone().strftime("%Y-%m-%d")
-        dashboard = repository.get_dashboard(today, config.web.recent_events_limit)
+        dashboard = repository.get_dashboard(today, cfg.web.recent_events_limit)
         chart = _build_chart(dashboard["ten_minute"])
         recent_chart = _build_chart(dashboard["recent_noise"], label_slice=slice(11, 19))
         return render_template(
@@ -110,7 +663,7 @@ def create_app(repository: SQLiteRepository, status: RuntimeStatus, config: AppC
     @app.post("/events/<int:event_id>/label")
     def update_event_label(event_id: int):
         raw_label = request.form.get("user_label")
-        normalized_label = raw_label if raw_label in manual_label_values else None
+        normalized_label = raw_label if raw_label in current_manual_label_values() else None
         if raw_label and normalized_label is None:
             abort(400)
         updated = repository.set_event_user_label(event_id, normalized_label)
@@ -142,6 +695,26 @@ def create_app(repository: SQLiteRepository, status: RuntimeStatus, config: AppC
             events=events,
         )
 
+    @app.route("/settings", methods=["GET", "POST"])
+    def settings():
+        cfg = current_config()
+        message = None
+        if request.method == "POST":
+            updated_config = _build_config_from_form(cfg, request.form)
+            saved_path = save_config(updated_config)
+            config_state["value"] = load_config(saved_path)
+            cfg = current_config()
+            message = (
+                f"Ustawienia zapisane w {saved_path}. Część zmian zacznie działać po restarcie usługi audio-monitor."
+            )
+        return render_template(
+            "settings.html",
+            config=cfg,
+            message=message,
+            settings_values=_settings_values(cfg),
+            capture_device_options=_capture_device_options(cfg),
+        )
+
     @app.get("/clips/<int:event_id>")
     def clip_audio(event_id: int):
         event = repository.get_event(event_id)
@@ -159,8 +732,9 @@ def create_app(repository: SQLiteRepository, status: RuntimeStatus, config: AppC
     @app.get("/health")
     def health():
         snapshot = status.snapshot()
-        snapshot["database_path"] = str(config.storage.database_path)
-        system_status = _read_system_status(config)
+        cfg = current_config()
+        snapshot["database_path"] = str(cfg.storage.database_path)
+        system_status = _read_system_status(cfg)
         snapshot["system_status"] = system_status
         snapshot["system_uptime_human"] = _format_uptime_seconds(system_status.get("uptime_seconds"))
         return jsonify(snapshot)
@@ -228,6 +802,203 @@ def _format_dbfs(value: float | int | None, decimals: int = 1) -> str:
     return f"{normalized:.{decimals}f} dBFS"
 
 
+def _navigation_links() -> list[dict[str, str]]:
+    return [
+        {"endpoint": "index", "label": "Panel"},
+        {"endpoint": "bird_events", "label": "Ptaki"},
+        {"endpoint": "settings", "label": "Ustawienia"},
+    ]
+
+
+def _capture_device_options(config: AppConfig) -> list[dict[str, str]]:
+    options = [{"value": "", "label": "Automatyczny wybór"}]
+    try:
+        devices = list_capture_devices(config.audio.arecord_binary)
+    except AudioCaptureError:
+        devices = []
+    for device in devices:
+        options.append(
+            {
+                "value": device.device_spec,
+                "label": f"{device.device_spec} - {device.source_name}",
+            }
+        )
+    if config.audio.arecord_device and config.audio.arecord_device not in {item["value"] for item in options}:
+        options.append({"value": config.audio.arecord_device, "label": f"{config.audio.arecord_device} - ręcznie zapisane"})
+    return options
+
+
+def _settings_values(config: AppConfig) -> dict[str, object]:
+    return {
+        "preset": _detect_matching_preset(config),
+        "audio.arecord_device_mode": "manual" if config.audio.arecord_device else "auto",
+        "audio.arecord_device": config.audio.arecord_device or "",
+        "audio.sample_rate": config.audio.sample_rate,
+        "audio.channels": config.audio.channels,
+        "audio.frame_duration_seconds": config.audio.frame_duration_seconds,
+        "audio.retry_backoff_seconds": config.audio.retry_backoff_seconds,
+        "detection.initial_noise_floor_dbfs": config.detection.initial_noise_floor_dbfs,
+        "detection.activation_margin_db": config.detection.activation_margin_db,
+        "detection.release_margin_db": config.detection.release_margin_db,
+        "detection.min_event_dbfs": config.detection.min_event_dbfs,
+        "detection.min_active_frames": config.detection.min_active_frames,
+        "detection.max_inactive_frames": config.detection.max_inactive_frames,
+        "detection.noise_floor_alpha": config.detection.noise_floor_alpha,
+        "aggregation.noise_interval_seconds": config.aggregation.noise_interval_seconds,
+        "aggregation.pre_roll_seconds": config.aggregation.pre_roll_seconds,
+        "aggregation.post_roll_seconds": config.aggregation.post_roll_seconds,
+        "aggregation.min_event_seconds": config.aggregation.min_event_seconds,
+        "aggregation.focus_clip_seconds": config.aggregation.focus_clip_seconds,
+        "aggregation.max_clip_seconds": config.aggregation.max_clip_seconds,
+        "aggregation.max_event_seconds": config.aggregation.max_event_seconds,
+        "classifier.backend": config.classifier.backend,
+        "classifier.yamnet_num_threads": config.classifier.yamnet_num_threads,
+        "classifier.yamnet_max_analysis_seconds": config.classifier.yamnet_max_analysis_seconds,
+        "classifier.yamnet_max_windows": config.classifier.yamnet_max_windows,
+        "classifier.yamnet_min_category_score": config.classifier.yamnet_min_category_score,
+        "classifier.yamnet_top_k": config.classifier.yamnet_top_k,
+        "classifier.birdnet_timeout_seconds": config.classifier.birdnet_timeout_seconds,
+        "classifier.birdnet_min_confidence": config.classifier.birdnet_min_confidence,
+        "classifier.birdnet_num_results": config.classifier.birdnet_num_results,
+        "classifier.birdnet_locale": config.classifier.birdnet_locale,
+        "classifier.birdnet_api_url": config.classifier.birdnet_api_url,
+        "storage.keep_clips": "true" if config.storage.keep_clips else "false",
+        "storage.clip_max_megabytes": config.storage.clip_max_megabytes,
+        "storage.clip_max_age_days": config.storage.clip_max_age_days,
+        "storage.min_free_disk_megabytes": config.storage.min_free_disk_megabytes,
+        "storage.database_path": _display_path(config.base_dir, config.storage.database_path),
+        "storage.clip_dir": _display_path(config.base_dir, config.storage.clip_dir),
+        "web.host": config.web.host,
+        "web.port": config.web.port,
+        "web.recent_events_limit": config.web.recent_events_limit,
+        "web.dashboard_history_hours": config.web.dashboard_history_hours,
+        "logging.level": config.logging.level,
+    }
+
+
+def _detect_matching_preset(config: AppConfig) -> str:
+    for preset_name, preset in SETTINGS_PRESETS.items():
+        if preset_name == "custom":
+            continue
+        detection_matches = all(
+            getattr(config.detection, key) == value for key, value in preset.get("detection", {}).items()
+        )
+        aggregation_matches = all(
+            getattr(config.aggregation, key) == value for key, value in preset.get("aggregation", {}).items()
+        )
+        if detection_matches and aggregation_matches:
+            return preset_name
+    return "custom"
+
+
+def _build_config_from_form(config: AppConfig, form) -> AppConfig:
+    preset_name = form.get("preset", "custom")
+    detection_values = {
+        "initial_noise_floor_dbfs": _float_from_form(form, "detection.initial_noise_floor_dbfs"),
+        "activation_margin_db": _float_from_form(form, "detection.activation_margin_db"),
+        "release_margin_db": _float_from_form(form, "detection.release_margin_db"),
+        "min_event_dbfs": _float_from_form(form, "detection.min_event_dbfs"),
+        "min_active_frames": _int_from_form(form, "detection.min_active_frames"),
+        "max_inactive_frames": _int_from_form(form, "detection.max_inactive_frames"),
+        "noise_floor_alpha": _float_from_form(form, "detection.noise_floor_alpha"),
+    }
+    aggregation_values = {
+        "noise_interval_seconds": _float_from_form(form, "aggregation.noise_interval_seconds"),
+        "pre_roll_seconds": _float_from_form(form, "aggregation.pre_roll_seconds"),
+        "post_roll_seconds": _float_from_form(form, "aggregation.post_roll_seconds"),
+        "min_event_seconds": _float_from_form(form, "aggregation.min_event_seconds"),
+        "focus_clip_seconds": _float_from_form(form, "aggregation.focus_clip_seconds"),
+        "max_clip_seconds": _float_from_form(form, "aggregation.max_clip_seconds"),
+        "max_event_seconds": _float_from_form(form, "aggregation.max_event_seconds"),
+    }
+    if preset_name in SETTINGS_PRESETS and preset_name != "custom":
+        detection_values.update(SETTINGS_PRESETS[preset_name].get("detection", {}))
+        aggregation_values.update(SETTINGS_PRESETS[preset_name].get("aggregation", {}))
+
+    arecord_device_mode = form.get("audio.arecord_device_mode", "auto")
+    arecord_device = form.get("audio.arecord_device", "").strip() if arecord_device_mode == "manual" else None
+    if arecord_device == "":
+        arecord_device = None
+
+    config_path = config.config_path
+    return AppConfig(
+        base_dir=config.base_dir,
+        audio=AudioConfig(
+            sample_rate=_int_from_form(form, "audio.sample_rate"),
+            channels=_int_from_form(form, "audio.channels"),
+            frame_duration_seconds=_float_from_form(form, "audio.frame_duration_seconds"),
+            arecord_binary=config.audio.arecord_binary,
+            arecord_device=arecord_device,
+            retry_backoff_seconds=_float_from_form(form, "audio.retry_backoff_seconds"),
+        ),
+        detection=DetectionConfig(**detection_values),
+        aggregation=AggregationConfig(**aggregation_values),
+        classifier=ClassifierConfig(
+            backend=form.get("classifier.backend", config.classifier.backend),
+            reuse_similarity_threshold=config.classifier.reuse_similarity_threshold,
+            reuse_confidence_threshold=config.classifier.reuse_confidence_threshold,
+            similarity_cache_limit=config.classifier.similarity_cache_limit,
+            similarity_lookback_days=config.classifier.similarity_lookback_days,
+            yamnet_model_path=config.classifier.yamnet_model_path,
+            yamnet_class_map_path=config.classifier.yamnet_class_map_path,
+            yamnet_model_url=config.classifier.yamnet_model_url,
+            yamnet_class_map_url=config.classifier.yamnet_class_map_url,
+            yamnet_num_threads=_int_from_form(form, "classifier.yamnet_num_threads"),
+            yamnet_max_analysis_seconds=_float_from_form(form, "classifier.yamnet_max_analysis_seconds"),
+            yamnet_max_windows=_int_from_form(form, "classifier.yamnet_max_windows"),
+            yamnet_min_category_score=_float_from_form(form, "classifier.yamnet_min_category_score"),
+            yamnet_top_k=_int_from_form(form, "classifier.yamnet_top_k"),
+            birdnet_api_url=form.get("classifier.birdnet_api_url", "").strip(),
+            birdnet_timeout_seconds=_float_from_form(form, "classifier.birdnet_timeout_seconds"),
+            birdnet_min_confidence=_float_from_form(form, "classifier.birdnet_min_confidence"),
+            birdnet_num_results=_int_from_form(form, "classifier.birdnet_num_results"),
+            birdnet_locale=form.get("classifier.birdnet_locale", config.classifier.birdnet_locale),
+        ),
+        storage=StorageConfig(
+            database_path=_resolve_settings_path(config.base_dir, form.get("storage.database_path", "")),
+            clip_dir=_resolve_settings_path(config.base_dir, form.get("storage.clip_dir", "")),
+            keep_clips=_bool_from_form(form, "storage.keep_clips"),
+            clip_max_megabytes=_int_from_form(form, "storage.clip_max_megabytes"),
+            clip_max_age_days=_int_from_form(form, "storage.clip_max_age_days"),
+            min_free_disk_megabytes=_int_from_form(form, "storage.min_free_disk_megabytes"),
+        ),
+        web=WebConfig(
+            host=form.get("web.host", config.web.host),
+            port=_int_from_form(form, "web.port"),
+            recent_events_limit=_int_from_form(form, "web.recent_events_limit"),
+            dashboard_history_hours=_int_from_form(form, "web.dashboard_history_hours"),
+        ),
+        logging=LoggingConfig(level=form.get("logging.level", config.logging.level)),
+        config_path=config_path,
+    )
+
+
+def _resolve_settings_path(base_dir: Path, value: str) -> Path:
+    raw_value = value.strip()
+    if not raw_value:
+        return base_dir
+    return Path(raw_value).resolve() if Path(raw_value).is_absolute() else (base_dir / raw_value).resolve()
+
+
+def _display_path(base_dir: Path, path: Path) -> str:
+    try:
+        return str(path.resolve().relative_to(base_dir.resolve()))
+    except ValueError:
+        return str(path.resolve())
+
+
+def _int_from_form(form, key: str) -> int:
+    return int(float(form.get(key, 0)))
+
+
+def _float_from_form(form, key: str) -> float:
+    return float(form.get(key, 0.0))
+
+
+def _bool_from_form(form, key: str) -> bool:
+    return form.get(key, "false") == "true"
+
+
 def _describe_classifier_decision(decision: dict[str, object]) -> dict[str, object]:
     details = decision.get("details")
     normalized_details = details if isinstance(details, dict) else {}
@@ -235,10 +1006,11 @@ def _describe_classifier_decision(decision: dict[str, object]) -> dict[str, obje
     cache_hit = bool(normalized_details.get("cache_hit"))
     external_api_name = normalized_details.get("external_api_name") or normalized_details.get("api_name")
     used_external_api = bool(normalized_details.get("used_external_api") or external_api_name)
+    external_api_label = _translate_external_api_name(str(external_api_name)) if external_api_name else None
 
     if used_external_api:
         source = "external_api"
-        source_label = f"Zewnętrzne API: {external_api_name or 'nieznane'}"
+        source_label = f"Zewnętrzne API: {external_api_label or 'nieznane'}"
     elif cache_hit:
         source = "cache_reuse"
         source_label = "Ponowne użycie z lokalnego cache"
@@ -288,7 +1060,7 @@ def _describe_classifier_decision(decision: dict[str, object]) -> dict[str, obje
         "source": source,
         "source_label": source_label,
         "used_external_api": used_external_api,
-        "external_api_name": str(external_api_name) if external_api_name else None,
+        "external_api_name": external_api_label,
         "cache_hit": cache_hit,
         "cache_similarity": normalized_details.get("cache_similarity"),
         "cache_source_event_id": normalized_details.get("cache_source_event_id"),
@@ -320,6 +1092,22 @@ def _describe_classifier_decision(decision: dict[str, object]) -> dict[str, obje
 
 def _translate_classifier_name(name: str) -> str:
     return CLASSIFIER_LABELS.get(name, _translate_label(name))
+
+
+def _translate_external_api_name(name: str | None) -> str | None:
+    if not name:
+        return None
+    if name == "BirdNET API":
+        return "API BirdNET"
+    if name == "BirdNET Cloud":
+        return "Chmura BirdNET"
+    return name
+
+
+def _format_worker_state(value: str | None) -> str:
+    if not value:
+        return WORKER_STATE_LABELS["idle"]
+    return WORKER_STATE_LABELS.get(value, value)
 
 
 def _translate_label(value: str | None) -> str:

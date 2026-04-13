@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}Ustawienia{% endblock %}
+{% block content %}
+  <section class="card">
+    <p class="label">Konfiguracja</p>
+    <h2>Ustawienia</h2>
+    <p>Zmiany zapisują się do pliku konfiguracyjnego aplikacji. Parametry przechwytywania i klasyfikacji zwykle wymagają restartu usługi.</p>
+    {% if message %}
+      <p class="settings-banner">{{ message }}</p>
+    {% endif %}
+  </section>
+
+  <form method="post" class="settings-form">
+    {% for section in settings_sections %}
+      <section class="card settings-card">
+        <h3>{{ section.title }}</h3>
+        <div class="settings-grid">
+          {% for field in section.fields %}
+            {% set value = settings_values[field.name] %}
+            <article class="settings-field">
+              <label for="{{ field.name|replace('.', '_') }}">
+                <strong>{{ field.label }}</strong>
+              </label>
+              <p class="settings-help">{{ field.description }}</p>
+
+              {% if field.kind == "radio" %}
+                <div class="choice-group">
+                  {% for option in field.options %}
+                    <label class="choice-card">
+                      <input
+                        type="radio"
+                        name="{{ field.name }}"
+                        value="{{ option.value }}"
+                        {% if value|string == option.value|string %}checked{% endif %}
+                      >
+                      <span>{{ option.label }}</span>
+                      {% if option.description %}
+                        <small>{{ option.description }}</small>
+                      {% endif %}
+                    </label>
+                  {% endfor %}
+                </div>
+              {% elif field.kind == "select" %}
+                <select id="{{ field.name|replace('.', '_') }}" name="{{ field.name }}">
+                  {% set options = field.options if field.options is defined else capture_device_options %}
+                  {% for option in options %}
+                    <option value="{{ option.value }}" {% if value|string == option.value|string %}selected{% endif %}>{{ option.label }}</option>
+                  {% endfor %}
+                </select>
+              {% elif field.kind == "range" %}
+                <div class="range-field">
+                  <input
+                    id="{{ field.name|replace('.', '_') }}"
+                    type="range"
+                    name="{{ field.name }}"
+                    min="{{ field.min }}"
+                    max="{{ field.max }}"
+                    step="{{ field.step }}"
+                    value="{{ value }}"
+                    data-output="{{ field.name|replace('.', '_') }}_output"
+                  >
+                  <div class="range-meta">
+                    <output id="{{ field.name|replace('.', '_') }}_output" data-unit="{{ field.unit or '' }}">{{ value }}{% if field.unit %} {{ field.unit }}{% endif %}</output>
+                  </div>
+                </div>
+              {% elif field.kind == "number" %}
+                <input
+                  id="{{ field.name|replace('.', '_') }}"
+                  type="number"
+                  name="{{ field.name }}"
+                  min="{{ field.min }}"
+                  max="{{ field.max }}"
+                  step="{{ field.step }}"
+                  value="{{ value }}"
+                >
+              {% else %}
+                <input
+                  id="{{ field.name|replace('.', '_') }}"
+                  type="text"
+                  name="{{ field.name }}"
+                  value="{{ value }}"
+                  {% if field.placeholder %}placeholder="{{ field.placeholder }}"{% endif %}
+                >
+              {% endif %}
+            </article>
+          {% endfor %}
+        </div>
+      </section>
+    {% endfor %}
+
+    <section class="card settings-card settings-actions">
+      <p>Część ustawień panelu WWW odświeży się od razu. Audio, detekcja i klasyfikacja zwykle wymagają restartu usługi.</p>
+      <button type="submit">Zapisz ustawienia</button>
+    </section>
+  </form>
+
+  <script>
+    (() => {
+      document.querySelectorAll("input[type='range'][data-output]").forEach((input) => {
+        const output = document.getElementById(input.dataset.output);
+        const unit = output?.dataset.unit || "";
+        const render = () => {
+          if (!output) return;
+          output.textContent = unit ? `${input.value} ${unit}` : input.value;
+        };
+        input.addEventListener("input", render);
+        render();
+      });
+    })();
+  </script>
+{% endblock %}

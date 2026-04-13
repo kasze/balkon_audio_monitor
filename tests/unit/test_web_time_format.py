@@ -15,6 +15,7 @@ from app.web.app import (
     _format_dbfs,
     _format_local_timestamp,
     _format_uptime_seconds,
+    _format_worker_state,
     _read_cpu_load_percent,
     _read_cpu_temperature_c,
     _read_disk_free_gb,
@@ -104,7 +105,7 @@ def test_describe_classifier_decision_marks_external_api_when_present() -> None:
 
     assert trace["source"] == "external_api"
     assert trace["used_external_api"] is True
-    assert trace["external_api_name"] == "BirdNET API"
+    assert trace["external_api_name"] == "API BirdNET"
     assert trace["birdnet_common_name"] == "Bogatka"
     assert trace["birdnet_scientific_name"] == "Parus major"
     assert trace["birdnet_trigger_labels"] == ["Bird", "Bird vocalization, bird call, bird song"]
@@ -185,3 +186,5 @@ def test_translate_label_and_classifier_name() -> None:
     assert _translate_label("ambulance") == "Karetka / syrena karetki"
     assert _translate_label("speech") == "Mowa ludzka"
     assert _translate_classifier_name("yamnet_litert") == "Lokalny YAMNet (LiteRT)"
+    assert _format_worker_state("running") == "działa"
+    assert _format_worker_state("idle") == "bezczynny"

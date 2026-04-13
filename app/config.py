@@ -27,11 +27,11 @@ class AudioConfig:
 @dataclass(slots=True, frozen=True)
 class DetectionConfig:
     initial_noise_floor_dbfs: float = -58.0
-    activation_margin_db: float = 9.0
+    activation_margin_db: float = 11.0
     release_margin_db: float = 4.0
-    min_event_dbfs: float = -48.0
-    min_active_frames: int = 2
-    max_inactive_frames: int = 3
+    min_event_dbfs: float = -44.0
+    min_active_frames: int = 3
+    max_inactive_frames: int = 2
     noise_floor_alpha: float = 0.04
 
 
@@ -39,11 +39,11 @@ class DetectionConfig:
 class AggregationConfig:
     noise_interval_seconds: float = 5.0
     pre_roll_seconds: float = 1.0
-    post_roll_seconds: float = 1.0
+    post_roll_seconds: float = 0.5
     min_event_seconds: float = 1.0
     focus_clip_seconds: float = 8.0
     max_clip_seconds: float = 30.0
-    max_event_seconds: float = 90.0
+    max_event_seconds: float = 25.0
 
 
 @dataclass(slots=True, frozen=True)
@@ -117,6 +117,7 @@ class AppConfig:
     )
     web: WebConfig = field(default_factory=WebConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
+    config_path: Path | None = None
 
 
 def _merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
@@ -153,8 +154,13 @@ def _defaults(base_dir: Path) -> dict[str, Any]:
 
 
 def load_config(path: str | Path | None = None) -> AppConfig:
-    base_dir = Path.cwd().resolve()
     config_path = Path(path).resolve() if path else None
+    if config_path is None:
+        base_dir = Path.cwd().resolve()
+    elif config_path.parent.name == "configs":
+        base_dir = config_path.parent.parent.resolve()
+    else:
+        base_dir = config_path.parent.resolve()
     merged = _defaults(base_dir)
     if config_path and config_path.exists():
         loaded = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
@@ -198,4 +204,85 @@ def load_config(path: str | Path | None = None) -> AppConfig:
         ),
         web=WebConfig(**merged["web"]),
         logging=LoggingConfig(**merged["logging"]),
+        config_path=config_path,
     )
+
+
+def save_config(config: AppConfig, path: str | Path | None = None) -> Path:
+    target_path = Path(path).resolve() if path else (config.config_path or config.base_dir / "configs/config.yaml")
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "audio": {
+            "sample_rate": int(config.audio.sample_rate),
+            "channels": int(config.audio.channels),
+            "frame_duration_seconds": float(config.audio.frame_duration_seconds),
+            "arecord_binary": config.audio.arecord_binary,
+            "arecord_device": config.audio.arecord_device,
+            "retry_backoff_seconds": float(config.audio.retry_backoff_seconds),
+        },
+        "detection": {
+            "initial_noise_floor_dbfs": float(config.detection.initial_noise_floor_dbfs),
+            "activation_margin_db": float(config.detection.activation_margin_db),
+            "release_margin_db": float(config.detection.release_margin_db),
+            "min_event_dbfs": float(config.detection.min_event_dbfs),
+            "min_active_frames": int(config.detection.min_active_frames),
+            "max_inactive_frames": int(config.detection.max_inactive_frames),
+            "noise_floor_alpha": float(config.detection.noise_floor_alpha),
+        },
+        "aggregation": {
+            "noise_interval_seconds": float(config.aggregation.noise_interval_seconds),
+            "pre_roll_seconds": float(config.aggregation.pre_roll_seconds),
+            "post_roll_seconds": float(config.aggregation.post_roll_seconds),
+            "min_event_seconds": float(config.aggregation.min_event_seconds),
+            "focus_clip_seconds": float(config.aggregation.focus_clip_seconds),
+            "max_clip_seconds": float(config.aggregation.max_clip_seconds),
+            "max_event_seconds": float(config.aggregation.max_event_seconds),
+        },
+        "classifier": {
+            "backend": config.classifier.backend,
+            "reuse_similarity_threshold": float(config.classifier.reuse_similarity_threshold),
+            "reuse_confidence_threshold": float(config.classifier.reuse_confidence_threshold),
+            "similarity_cache_limit": int(config.classifier.similarity_cache_limit),
+            "similarity_lookback_days": int(config.classifier.similarity_lookback_days),
+            "yamnet_model_path": _serialize_path(config.base_dir, config.classifier.yamnet_model_path),
+            "yamnet_class_map_path": _serialize_path(config.base_dir, config.classifier.yamnet_class_map_path),
+            "yamnet_model_url": config.classifier.yamnet_model_url,
+            "yamnet_class_map_url": config.classifier.yamnet_class_map_url,
+            "yamnet_num_threads": int(config.classifier.yamnet_num_threads),
+            "yamnet_max_analysis_seconds": float(config.classifier.yamnet_max_analysis_seconds),
+            "yamnet_max_windows": int(config.classifier.yamnet_max_windows),
+            "yamnet_min_category_score": float(config.classifier.yamnet_min_category_score),
+            "yamnet_top_k": int(config.classifier.yamnet_top_k),
+            "birdnet_api_url": config.classifier.birdnet_api_url,
+            "birdnet_timeout_seconds": float(config.classifier.birdnet_timeout_seconds),
+            "birdnet_min_confidence": float(config.classifier.birdnet_min_confidence),
+            "birdnet_num_results": int(config.classifier.birdnet_num_results),
+            "birdnet_locale": config.classifier.birdnet_locale,
+        },
+        "storage": {
+            "database_path": _serialize_path(config.base_dir, config.storage.database_path),
+            "clip_dir": _serialize_path(config.base_dir, config.storage.clip_dir),
+            "keep_clips": bool(config.storage.keep_clips),
+            "clip_max_megabytes": int(config.storage.clip_max_megabytes),
+            "clip_max_age_days": int(config.storage.clip_max_age_days),
+            "min_free_disk_megabytes": int(config.storage.min_free_disk_megabytes),
+        },
+        "web": {
+            "host": config.web.host,
+            "port": int(config.web.port),
+            "recent_events_limit": int(config.web.recent_events_limit),
+            "dashboard_history_hours": int(config.web.dashboard_history_hours),
+        },
+        "logging": {
+            "level": config.logging.level,
+        },
+    }
+    target_path.write_text(yaml.safe_dump(payload, sort_keys=False, allow_unicode=True), encoding="utf-8")
+    return target_path
+
+
+def _serialize_path(base_dir: Path, path: Path) -> str:
+    try:
+        return str(path.resolve().relative_to(base_dir.resolve()))
+    except ValueError:
+        return str(path.resolve())

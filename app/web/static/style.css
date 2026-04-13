@@ -87,6 +87,23 @@ main {
   padding: 8px 2px 0;
 }
 
+.page-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.page-nav a {
+  padding: 9px 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.42);
+  font-size: 0.9rem;
+  color: rgba(31, 47, 83, 0.9);
+}
+
 .page-header h1 {
   margin: 6px 0 0;
   font-size: clamp(2.4rem, 4vw, 4.4rem);
@@ -362,7 +379,9 @@ main {
 
 audio,
 select,
-button {
+button,
+input[type="text"],
+input[type="number"] {
   width: 100%;
   margin-top: 12px;
 }
@@ -441,13 +460,112 @@ form {
   margin-top: 16px;
 }
 
+.settings-form {
+  margin-top: 0;
+}
+
+.settings-card {
+  margin-bottom: var(--space-panel);
+}
+
+.settings-banner {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(140, 231, 198, 0.2);
+  border: 1px solid rgba(50, 211, 154, 0.2);
+}
+
+.settings-grid {
+  display: grid;
+  gap: var(--space-panel-tight);
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.settings-field {
+  padding: 16px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.settings-field label strong {
+  display: block;
+  margin-bottom: 2px;
+}
+
+.settings-help {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.choice-group {
+  display: grid;
+  gap: 10px;
+}
+
+.choice-card {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.34);
+  border: 1px solid rgba(124, 149, 197, 0.2);
+}
+
+.choice-card input {
+  width: auto;
+  margin: 0 0 4px;
+}
+
+.choice-card small {
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.range-field {
+  display: grid;
+  gap: 10px;
+}
+
+.range-field input[type="range"] {
+  margin: 0;
+}
+
+.range-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.range-meta output {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.settings-actions {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.settings-actions p {
+  margin: 0;
+  color: var(--muted);
+}
+
 label {
   display: block;
   margin-bottom: 8px;
 }
 
 select,
-button {
+button,
+input[type="text"],
+input[type="number"] {
   appearance: none;
   border: 1px solid rgba(122, 149, 202, 0.24);
   border-radius: 16px;
@@ -460,7 +578,9 @@ button {
 }
 
 select:focus,
-button:focus {
+button:focus,
+input[type="text"]:focus,
+input[type="number"]:focus {
   outline: none;
   border-color: rgba(63, 130, 255, 0.5);
   box-shadow:
@@ -511,6 +631,10 @@ button:active {
     min-width: 0;
   }
 
+  .page-nav {
+    gap: 8px;
+  }
+
   .status-metrics {
     grid-template-columns: 1fr;
   }
@@ -526,5 +650,10 @@ button:active {
 
   .chart-card {
     margin-bottom: var(--space-panel-mobile);
+  }
+
+  .settings-actions {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
