@@ -4,7 +4,7 @@ import csv
 import os
 import shutil
 import subprocess
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from flask import Flask, abort, jsonify, redirect, render_template, request, send_file, url_for
@@ -40,6 +40,13 @@ WORKER_STATE_LABELS = {
     "degraded": "ograniczony",
     "error": "błąd",
     "stopped": "zatrzymany",
+}
+
+PERIOD_LABELS = {
+    "day": "Dzień",
+    "week": "Tydzień",
+    "month": "Miesiąc",
+    "year": "Rok",
 }
 
 SETTINGS_PRESETS = {
@@ -641,16 +648,19 @@ def create_app(repository: SQLiteRepository, status: RuntimeStatus, config: AppC
     @app.get("/")
     def index():
         cfg = current_config()
-        today = datetime.now().astimezone().strftime("%Y-%m-%d")
-        dashboard = repository.get_dashboard(today, cfg.web.recent_events_limit)
-        chart = _build_chart(dashboard["ten_minute"])
-        recent_chart = _build_chart(dashboard["recent_noise"], label_slice=slice(11, 19))
+        range_state = _resolve_range_state(request.args)
+        dashboard = repository.get_dashboard_range(
+            started_at=range_state["started_at"],
+            ended_at=range_state["ended_at"],
+            recent_limit=cfg.web.recent_events_limit,
+            bucket_mode=range_state["bucket_mode"],
+        )
+        chart = _build_chart(dashboard["ten_minute"], label_slice=range_state["label_slice"])
         return render_template(
             "index.html",
-            day=today,
+            range_state=range_state,
             dashboard=dashboard,
             chart=chart,
-            recent_chart=recent_chart,
         )
 
     @app.get("/events/<int:event_id>")
@@ -673,25 +683,34 @@ def create_app(repository: SQLiteRepository, status: RuntimeStatus, config: AppC
 
     @app.get("/categories/<path:category>")
     def category_events(category: str):
-        today = datetime.now().astimezone().strftime("%Y-%m-%d")
-        events = repository.list_events(category=category, day=today, limit=200)
+        range_state = _resolve_range_state(request.args)
+        events = repository.list_events_range(
+            category=category,
+            started_at=range_state["started_at"],
+            ended_at=range_state["ended_at"],
+            limit=200,
+        )
         if not events:
             abort(404)
         return render_template(
             "category.html",
             category=category,
             category_label=_translate_label(category),
-            day=today,
+            range_state=range_state,
             events=events,
         )
 
     @app.get("/birds")
     def bird_events():
-        today = datetime.now().astimezone().strftime("%Y-%m-%d")
-        events = repository.list_bird_events(day=today, limit=200)
+        range_state = _resolve_range_state(request.args)
+        events = repository.list_bird_events_range(
+            started_at=range_state["started_at"],
+            ended_at=range_state["ended_at"],
+            limit=200,
+        )
         return render_template(
             "birds.html",
-            day=today,
+            range_state=range_state,
             events=events,
         )
 
@@ -759,6 +778,83 @@ def _build_chart(rows: list[dict[str, object]], label_slice: slice = slice(11, 1
         "min_value": round(min_value, 1),
         "max_value": round(max_value, 1),
     }
+
+
+def _resolve_range_state(args) -> dict[str, object]:
+    today = datetime.now().astimezone().date()
+    period = args.get("period", "day")
+    if period not in PERIOD_LABELS:
+        period = "day"
+
+    raw_date = args.get("date")
+    try:
+        anchor = date.fromisoformat(raw_date) if raw_date else today
+    except ValueError:
+        anchor = today
+
+    range_start, range_end, nav_date, title = _period_bounds(period, anchor)
+    previous_date = _shift_anchor(nav_date, period, -1)
+    next_date = _shift_anchor(nav_date, period, 1)
+    bucket_mode, label_slice = _bucket_mode_for_period(period)
+
+    return {
+        "period": period,
+        "period_label": PERIOD_LABELS[period],
+        "date": nav_date.isoformat(),
+        "started_at": datetime.combine(range_start, datetime.min.time()).strftime("%Y-%m-%d %H:%M:%S"),
+        "ended_at": datetime.combine(range_end, datetime.min.time()).strftime("%Y-%m-%d %H:%M:%S"),
+        "title": title,
+        "previous_date": previous_date.isoformat(),
+        "next_date": next_date.isoformat(),
+        "bucket_mode": bucket_mode,
+        "label_slice": label_slice,
+    }
+
+
+def _period_bounds(period: str, anchor: date) -> tuple[date, date, date, str]:
+    if period == "week":
+        start = anchor - timedelta(days=anchor.weekday())
+        end = start + timedelta(days=7)
+        title = f"{start:%Y-%m-%d} - {(end - timedelta(days=1)):%Y-%m-%d}"
+        return start, end, start, title
+    if period == "month":
+        start = anchor.replace(day=1)
+        next_month = _add_months(start, 1)
+        title = start.strftime("%Y-%m")
+        return start, next_month, start, title
+    if period == "year":
+        start = anchor.replace(month=1, day=1)
+        end = start.replace(year=start.year + 1)
+        title = start.strftime("%Y")
+        return start, end, start, title
+    start = anchor
+    end = anchor + timedelta(days=1)
+    return start, end, anchor, anchor.strftime("%Y-%m-%d")
+
+
+def _shift_anchor(anchor: date, period: str, delta: int) -> date:
+    if period == "week":
+        return anchor + timedelta(days=7 * delta)
+    if period == "month":
+        return _add_months(anchor, delta)
+    if period == "year":
+        return anchor.replace(year=anchor.year + delta)
+    return anchor + timedelta(days=delta)
+
+
+def _add_months(value: date, months: int) -> date:
+    total_month = value.month - 1 + months
+    year = value.year + total_month // 12
+    month = total_month % 12 + 1
+    return date(year, month, 1)
+
+
+def _bucket_mode_for_period(period: str) -> tuple[str, slice]:
+    if period == "year":
+        return "month", slice(0, 7)
+    if period in {"week", "month"}:
+        return "day", slice(5, 10)
+    return "ten_minute", slice(11, 16)
 
 
 def _format_local_timestamp(value: str | None) -> str:

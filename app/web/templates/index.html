@@ -1,12 +1,15 @@
 {% extends "base.html" %}
 {% from "_chart_macros.html" import render_chart_card %}
+{% from "_range_controls.html" import render_range_controls %}
 {% block title %}Panel{% endblock %}
 {% block content %}
+  {{ render_range_controls('index', range_state) }}
+
   <section class="grid two">
     <article class="card metric">
-      <p class="label">Dzień</p>
-      <h2>{{ day }}</h2>
-      <p>Zdarzenia dziś: {{ dashboard.summary.event_count }}</p>
+      <p class="label">{{ range_state.period_label }}</p>
+      <h2>{{ range_state.title }}</h2>
+      <p>Zdarzenia w zakresie: {{ dashboard.summary.event_count }}</p>
     </article>
     <article class="card metric">
       <p class="label">Poziom tła</p>
@@ -27,9 +30,7 @@
     </article>
   </section>
 
-  {{ render_chart_card("Ostatnia godzina hałasu", recent_chart, "Wykres hałasu z ostatniej godziny", "Brak danych z ostatniej godziny.") }}
-
-  {{ render_chart_card("Wykres hałasu (średnia co 10 minut)", chart, "Wykres hałasu ze średnią co 10 minut", "Brak danych 10-minutowych.") }}
+  {{ render_chart_card("Wykres hałasu", chart, "Wykres hałasu dla wybranego zakresu", "Brak danych dla wybranego zakresu.") }}
 
   <section class="grid two">
     <article class="card">
@@ -38,7 +39,7 @@
         <ul class="plain-list">
           {% for row in dashboard.categories %}
             <li>
-              <span><a href="{{ url_for('category_events', category=row.category) }}">{{ translate_label(row.category) }}</a></span>
+              <span><a href="{{ url_for('category_events', category=row.category, period=range_state.period, date=range_state.date) }}">{{ translate_label(row.category) }}</a></span>
               <strong>{{ row.total }}</strong>
             </li>
           {% endfor %}
@@ -48,7 +49,7 @@
       {% endif %}
     </article>
     <article class="card">
-      <h3><a href="{{ url_for('bird_events') }}">Ptaki</a></h3>
+      <h3><a href="{{ url_for('bird_events', period=range_state.period, date=range_state.date) }}">Ptaki</a></h3>
       {% if dashboard.bird_species_counts %}
         <ul class="plain-list">
           {% for row in dashboard.bird_species_counts %}
@@ -115,7 +116,7 @@
             <tr>
               <td><a href="{{ url_for('event_details', event_id=row.id) }}">#{{ row.id }}</a></td>
               <td>{{ row.started_at }}</td>
-              <td><a href="{{ url_for('category_events', category=row.category) }}">{{ translate_label(row.category) }}</a></td>
+              <td><a href="{{ url_for('category_events', category=row.category, period=range_state.period, date=range_state.date) }}">{{ translate_label(row.category) }}</a></td>
               <td>{{ '%.1f'|format(row.duration_seconds) }} s</td>
               <td>{{ format_dbfs(row.peak_dbfs) }}</td>
               <td>{{ '%.2f'|format(row.confidence) }}</td>

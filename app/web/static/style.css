@@ -176,6 +176,103 @@ main {
   letter-spacing: -0.03em;
 }
 
+.range-card {
+  margin-bottom: var(--space-panel);
+}
+
+.range-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.range-header h2 {
+  margin-bottom: 6px;
+}
+
+.range-header p:last-child {
+  margin: 0;
+  color: var(--muted);
+}
+
+.range-nav {
+  display: flex;
+  gap: 10px;
+}
+
+.range-arrow {
+  width: 42px;
+  height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.38);
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  font-size: 1.3rem;
+  line-height: 1;
+}
+
+.range-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: center;
+  margin-top: 0;
+}
+
+.segmented-control {
+  display: inline-grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 6px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.24);
+  border: 1px solid rgba(255, 255, 255, 0.26);
+}
+
+.segment {
+  position: relative;
+  cursor: pointer;
+}
+
+.segment input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  width: 100%;
+  margin: 0;
+}
+
+.segment span {
+  display: block;
+  padding: 10px 14px;
+  border-radius: 16px;
+  text-align: center;
+  color: rgba(44, 57, 88, 0.78);
+  transition: background 140ms ease, color 140ms ease, box-shadow 140ms ease;
+}
+
+.segment input:checked + span {
+  background: rgba(255, 255, 255, 0.66);
+  color: rgba(21, 35, 69, 0.96);
+  box-shadow: 0 8px 18px rgba(31, 56, 110, 0.08);
+}
+
+.range-picker {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-left: auto;
+}
+
+.range-picker input[type="date"] {
+  margin-top: 0;
+}
+
 .metric {
   min-height: 150px;
 }
@@ -637,6 +734,21 @@ button:active {
 
   .status-metrics {
     grid-template-columns: 1fr;
+  }
+
+  .range-header,
+  .range-picker,
+  .range-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .range-picker {
+    margin-left: 0;
+  }
+
+  .segmented-control {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .decision-header {

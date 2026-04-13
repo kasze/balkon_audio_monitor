@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 
 from app.config import AppConfig, ClassifierConfig, StorageConfig, load_config
-from app.models import ClassifierDecision, ClipMetadata, CompletedEvent, EventSummary
+from app.models import ClassifierDecision, ClipMetadata, CompletedEvent, EventSummary, NoiseInterval
 from app.pipeline import RuntimeStatus
 from app.storage.database import SQLiteRepository
 from app.web.app import create_app
@@ -268,6 +268,45 @@ def test_birds_page_and_dashboard_show_recent_bird_species(tmp_path: Path) -> No
     assert "Bogatka" in birds_html
     assert "/events/1" in birds_html
     assert "street_background" not in birds_html
+
+
+def test_dashboard_supports_period_navigation(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "audio_monitor.sqlite3")
+    repository.initialize()
+    now = datetime(2026, 4, 13, 10, 0).astimezone().replace(microsecond=0)
+
+    repository.insert_noise_interval(
+        NoiseInterval(
+            source_name="test",
+            started_at=now,
+            ended_at=now + timedelta(minutes=1),
+            avg_rms=0.1,
+            avg_dbfs=-30.0,
+            max_dbfs=-10.0,
+            avg_centroid_hz=500.0,
+            low_band_ratio=0.3,
+            mid_band_ratio=0.4,
+            high_band_ratio=0.3,
+        )
+    )
+
+    app = create_app(
+        repository,
+        RuntimeStatus(),
+        AppConfig(
+            base_dir=tmp_path,
+            storage=StorageConfig(database_path=repository.database_path, clip_dir=tmp_path / "clips"),
+        ),
+    )
+    client = app.test_client()
+
+    response = client.get("/?period=week&date=2026-04-13")
+
+    assert response.status_code == 200
+    html = response.get_data(as_text=True)
+    assert "Tydzień" in html
+    assert 'name="period" value="week"' in html
+    assert 'href="/birds?period=week&amp;date=2026-04-13"' in html
 
 
 def test_settings_page_renders_and_saves_config(tmp_path: Path) -> None:

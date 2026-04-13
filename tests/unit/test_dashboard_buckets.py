@@ -40,3 +40,35 @@ def test_dashboard_groups_noise_into_ten_minute_buckets(tmp_path: Path) -> None:
     assert round(float(dashboard["ten_minute"][0]["avg_dbfs"]), 1) == -25.0
     assert round(float(dashboard["ten_minute"][0]["max_dbfs"]), 1) == -8.0
     assert round(float(dashboard["ten_minute"][1]["avg_dbfs"]), 1) == -40.0
+
+
+def test_dashboard_groups_noise_by_day_and_month_for_wider_ranges(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "audio_monitor.sqlite3")
+    repository.initialize()
+    start = datetime(2026, 4, 12, 12, 1).astimezone()
+
+    repository.insert_noise_interval(_noise_interval(start, -30.0, -10.0))
+    repository.insert_noise_interval(_noise_interval(start + timedelta(days=1), -20.0, -8.0))
+    repository.insert_noise_interval(_noise_interval(start + timedelta(days=40), -40.0, -12.0))
+
+    weekly = repository.get_dashboard_range(
+        started_at="2026-04-12 00:00:00",
+        ended_at="2026-04-20 00:00:00",
+        recent_limit=10,
+        bucket_mode="day",
+    )
+    yearly = repository.get_dashboard_range(
+        started_at="2026-01-01 00:00:00",
+        ended_at="2027-01-01 00:00:00",
+        recent_limit=10,
+        bucket_mode="month",
+    )
+
+    assert [row["bucket_start"] for row in weekly["ten_minute"]] == [
+        "2026-04-12 00:00:00",
+        "2026-04-13 00:00:00",
+    ]
+    assert [row["bucket_start"] for row in yearly["ten_minute"]] == [
+        "2026-04-01 00:00:00",
+        "2026-05-01 00:00:00",
+    ]

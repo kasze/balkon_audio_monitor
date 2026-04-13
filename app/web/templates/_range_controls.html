@@ -1,0 +1,43 @@
+{% macro render_range_controls(endpoint, range_state, category=None) -%}
+  <section class="card range-card">
+    <div class="range-header">
+      <div>
+        <p class="label">Zakres danych</p>
+        <h2>{{ range_state.title }}</h2>
+        <p>{{ range_state.period_label }}</p>
+      </div>
+      <div class="range-nav">
+        <a
+          class="range-arrow"
+          href="{{ url_for(endpoint, category=category, period=range_state.period, date=range_state.previous_date) if category is not none else url_for(endpoint, period=range_state.period, date=range_state.previous_date) }}"
+        >
+          ‹
+        </a>
+        <a
+          class="range-arrow"
+          href="{{ url_for(endpoint, category=category, period=range_state.period, date=range_state.next_date) if category is not none else url_for(endpoint, period=range_state.period, date=range_state.next_date) }}"
+        >
+          ›
+        </a>
+      </div>
+    </div>
+
+    <form method="get" class="range-toolbar">
+      {% if category is not none %}
+        <input type="hidden" name="category" value="{{ category }}">
+      {% endif %}
+      <div class="segmented-control">
+        {% for value, label in [('day', 'Dzień'), ('week', 'Tydzień'), ('month', 'Miesiąc'), ('year', 'Rok')] %}
+          <label class="segment">
+            <input type="radio" name="period" value="{{ value }}" {% if range_state.period == value %}checked{% endif %}>
+            <span>{{ label }}</span>
+          </label>
+        {% endfor %}
+      </div>
+      <div class="range-picker">
+        <input type="date" name="date" value="{{ range_state.date }}">
+        <button type="submit">Pokaż</button>
+      </div>
+    </form>
+  </section>
+{%- endmacro %}

@@ -30,6 +30,18 @@ def _serialize_summary(event: CompletedEvent) -> str:
     return json.dumps(summary)
 
 
+def _bucket_expression(bucket_mode: str) -> str:
+    if bucket_mode == "month":
+        return "substr(started_at, 1, 7) || '-01 00:00:00'"
+    if bucket_mode == "day":
+        return "substr(started_at, 1, 10) || ' 00:00:00'"
+    return (
+        "substr(started_at, 1, 14)"
+        " || printf('%02d', (CAST(substr(started_at, 15, 2) AS INTEGER) / 10) * 10)"
+        " || ':00'"
+    )
+
+
 class SQLiteRepository:
     def __init__(self, database_path: Path) -> None:
         self.database_path = database_path
@@ -267,58 +279,77 @@ class SQLiteRepository:
         )
 
     def get_dashboard(self, day: str, recent_limit: int = 20) -> dict[str, Any]:
+        day_start = datetime.strptime(day, "%Y-%m-%d")
+        day_end = day_start + timedelta(days=1)
+        return self.get_dashboard_range(
+            started_at=day_start.strftime("%Y-%m-%d %H:%M:%S"),
+            ended_at=day_end.strftime("%Y-%m-%d %H:%M:%S"),
+            recent_limit=recent_limit,
+            bucket_mode="ten_minute",
+        )
+
+    def get_dashboard_range(
+        self,
+        *,
+        started_at: str,
+        ended_at: str,
+        recent_limit: int = 20,
+        bucket_mode: str = "ten_minute",
+    ) -> dict[str, Any]:
         with closing(self._connect()) as connection:
-            summary = connection.execute(
+            summary_events = connection.execute(
                 """
-                SELECT event_count, avg_dbfs, max_dbfs
-                FROM daily_stats
-                WHERE day = ?
+                SELECT COUNT(*) AS event_count
+                FROM events
+                WHERE started_at >= ? AND started_at < ?
                 """,
-                (day,),
+                (started_at, ended_at),
+            ).fetchone()
+            summary_noise = connection.execute(
+                """
+                SELECT AVG(avg_dbfs) AS avg_dbfs, MAX(max_dbfs) AS max_dbfs
+                FROM noise_intervals
+                WHERE started_at >= ? AND started_at < ?
+                """,
+                (started_at, ended_at),
             ).fetchone()
             categories = connection.execute(
                 """
                 SELECT COALESCE(user_label, category) AS category, COUNT(*) AS total
                 FROM events
-                WHERE substr(started_at, 1, 10) = ?
+                WHERE started_at >= ? AND started_at < ?
                 GROUP BY COALESCE(user_label, category)
                 ORDER BY total DESC, COALESCE(user_label, category) ASC
                 """,
-                (day,),
+                (started_at, ended_at),
             ).fetchall()
-            ten_minute = connection.execute(
+            bucket_rows = connection.execute(
                 """
                 SELECT
-                    substr(started_at, 1, 14)
-                        || printf('%02d', (CAST(substr(started_at, 15, 2) AS INTEGER) / 10) * 10)
-                        || ':00' AS bucket_start,
+                    """
+                + _bucket_expression(bucket_mode)
+                + """
+                    AS bucket_start,
                     AVG(avg_dbfs) AS avg_dbfs,
                     MAX(max_dbfs) AS max_dbfs,
                     COUNT(*) AS interval_count
                 FROM noise_intervals
-                WHERE substr(started_at, 1, 10) = ?
+                WHERE started_at >= ? AND started_at < ?
                 GROUP BY bucket_start
                 ORDER BY bucket_start ASC
                 """,
-                (day,),
+                (started_at, ended_at),
             ).fetchall()
             recent = connection.execute(
                 """
                 SELECT id, started_at, ended_at, duration_seconds, COALESCE(user_label, category) AS category,
                        confidence, peak_dbfs, user_label
                 FROM events
+                WHERE started_at >= ? AND started_at < ?
                 ORDER BY started_at DESC
                 LIMIT ?
                 """,
-                (recent_limit,),
-            ).fetchall()
-            recent_noise = connection.execute(
-                """
-                SELECT started_at AS bucket_start, avg_dbfs, max_dbfs
-                FROM noise_intervals
-                WHERE started_at >= datetime('now', 'localtime', '-1 hour')
-                ORDER BY started_at ASC
-                """
+                (started_at, ended_at, recent_limit),
             ).fetchall()
             bird_species = connection.execute(
                 """
@@ -326,31 +357,36 @@ class SQLiteRepository:
                        d.confidence, e.peak_dbfs
                 FROM events e
                 JOIN classifier_decisions d ON d.event_id = e.id
-                WHERE substr(e.started_at, 1, 10) = ?
+                WHERE e.started_at >= ? AND e.started_at < ?
                   AND d.classifier_name = 'birdnet_remote'
                 ORDER BY e.started_at DESC
                 LIMIT ?
                 """,
-                (day, recent_limit),
+                (started_at, ended_at, recent_limit),
             ).fetchall()
             bird_species_counts = connection.execute(
                 """
                 SELECT d.category AS species, COUNT(*) AS total
                 FROM events e
                 JOIN classifier_decisions d ON d.event_id = e.id
-                WHERE substr(e.started_at, 1, 10) = ?
+                WHERE e.started_at >= ? AND e.started_at < ?
                   AND d.classifier_name = 'birdnet_remote'
                 GROUP BY d.category
                 ORDER BY total DESC, d.category ASC
                 LIMIT ?
                 """,
-                (day, recent_limit),
+                (started_at, ended_at, recent_limit),
             ).fetchall()
+        summary = {
+            "event_count": int(summary_events["event_count"]) if summary_events and summary_events["event_count"] is not None else 0,
+            "avg_dbfs": float(summary_noise["avg_dbfs"]) if summary_noise and summary_noise["avg_dbfs"] is not None else None,
+            "max_dbfs": float(summary_noise["max_dbfs"]) if summary_noise and summary_noise["max_dbfs"] is not None else None,
+        }
         return {
-            "summary": dict(summary) if summary else {"event_count": 0, "avg_dbfs": None, "max_dbfs": None},
+            "summary": summary,
             "categories": [dict(row) for row in categories],
-            "ten_minute": [dict(row) for row in ten_minute],
-            "recent_noise": [dict(row) for row in recent_noise],
+            "ten_minute": [dict(row) for row in bucket_rows],
+            "recent_noise": [dict(row) for row in bucket_rows],
             "recent_events": [dict(row) for row in recent],
             "bird_species": [dict(row) for row in bird_species],
             "bird_species_counts": [dict(row) for row in bird_species_counts],
@@ -363,6 +399,25 @@ class SQLiteRepository:
         day: str | None = None,
         limit: int = 100,
     ) -> list[dict[str, Any]]:
+        if day:
+            day_start = datetime.strptime(day, "%Y-%m-%d")
+            day_end = day_start + timedelta(days=1)
+            return self.list_events_range(
+                category=category,
+                started_at=day_start.strftime("%Y-%m-%d %H:%M:%S"),
+                ended_at=day_end.strftime("%Y-%m-%d %H:%M:%S"),
+                limit=limit,
+            )
+        return self.list_events_range(category=category, started_at=None, ended_at=None, limit=limit)
+
+    def list_events_range(
+        self,
+        *,
+        category: str | None = None,
+        started_at: str | None,
+        ended_at: str | None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
         query = """
             SELECT id, started_at, ended_at, duration_seconds, COALESCE(user_label, category) AS category,
                    confidence, peak_dbfs, user_label
@@ -373,9 +428,12 @@ class SQLiteRepository:
         if category:
             conditions.append("COALESCE(user_label, category) = ?")
             params.append(category)
-        if day:
-            conditions.append("substr(started_at, 1, 10) = ?")
-            params.append(day)
+        if started_at:
+            conditions.append("started_at >= ?")
+            params.append(started_at)
+        if ended_at:
+            conditions.append("started_at < ?")
+            params.append(ended_at)
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
         query += " ORDER BY started_at DESC LIMIT ?"
@@ -391,6 +449,23 @@ class SQLiteRepository:
         day: str | None = None,
         limit: int = 100,
     ) -> list[dict[str, Any]]:
+        if day:
+            day_start = datetime.strptime(day, "%Y-%m-%d")
+            day_end = day_start + timedelta(days=1)
+            return self.list_bird_events_range(
+                started_at=day_start.strftime("%Y-%m-%d %H:%M:%S"),
+                ended_at=day_end.strftime("%Y-%m-%d %H:%M:%S"),
+                limit=limit,
+            )
+        return self.list_bird_events_range(started_at=None, ended_at=None, limit=limit)
+
+    def list_bird_events_range(
+        self,
+        *,
+        started_at: str | None,
+        ended_at: str | None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
         query = """
             SELECT e.id, e.started_at, e.ended_at, e.duration_seconds,
                    d.category AS species, d.confidence, e.peak_dbfs
@@ -399,9 +474,12 @@ class SQLiteRepository:
             WHERE d.classifier_name = 'birdnet_remote'
         """
         params: list[Any] = []
-        if day:
-            query += " AND substr(e.started_at, 1, 10) = ?"
-            params.append(day)
+        if started_at:
+            query += " AND e.started_at >= ?"
+            params.append(started_at)
+        if ended_at:
+            query += " AND e.started_at < ?"
+            params.append(ended_at)
         query += " ORDER BY e.started_at DESC LIMIT ?"
         params.append(limit)
 
