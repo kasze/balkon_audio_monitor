@@ -150,7 +150,11 @@ class SQLiteRepository:
 
                 CREATE INDEX IF NOT EXISTS idx_noise_intervals_started_at ON noise_intervals(started_at);
                 CREATE INDEX IF NOT EXISTS idx_events_started_at ON events(started_at);
+                CREATE INDEX IF NOT EXISTS idx_events_started_category ON events(started_at, category);
+                CREATE INDEX IF NOT EXISTS idx_events_user_label_started ON events(user_label, started_at);
                 CREATE INDEX IF NOT EXISTS idx_events_category ON events(category);
+                CREATE INDEX IF NOT EXISTS idx_classifier_decisions_name_event
+                    ON classifier_decisions(classifier_name, event_id);
                 CREATE INDEX IF NOT EXISTS idx_classifier_cache_lookup
                     ON classifier_cache(classifier_name, created_at DESC);
                 CREATE INDEX IF NOT EXISTS idx_classifier_cache_signature_hash
@@ -305,14 +309,7 @@ class SQLiteRepository:
                 """,
                 (started_at, ended_at),
             ).fetchone()
-            summary_noise = connection.execute(
-                """
-                SELECT AVG(avg_dbfs) AS avg_dbfs, MAX(max_dbfs) AS max_dbfs
-                FROM noise_intervals
-                WHERE started_at >= ? AND started_at < ?
-                """,
-                (started_at, ended_at),
-            ).fetchone()
+            summary_noise = self._fetch_noise_summary(connection, started_at, ended_at, bucket_mode)
             categories = connection.execute(
                 """
                 SELECT COALESCE(user_label, category) AS category, COUNT(*) AS total
@@ -323,40 +320,39 @@ class SQLiteRepository:
                 """,
                 (started_at, ended_at),
             ).fetchall()
-            bucket_rows = connection.execute(
-                """
-                SELECT
-                    """
-                + _bucket_expression(bucket_mode)
-                + """
-                    AS bucket_start,
-                    AVG(avg_dbfs) AS avg_dbfs,
-                    MAX(max_dbfs) AS max_dbfs,
-                    COUNT(*) AS interval_count
-                FROM noise_intervals
-                WHERE started_at >= ? AND started_at < ?
-                GROUP BY bucket_start
-                ORDER BY bucket_start ASC
-                """,
-                (started_at, ended_at),
-            ).fetchall()
+            bucket_rows = self._fetch_noise_buckets(connection, started_at, ended_at, bucket_mode)
             recent = connection.execute(
                 """
-                SELECT id, started_at, ended_at, duration_seconds, COALESCE(user_label, category) AS category,
-                       confidence, peak_dbfs, user_label
-                FROM events
-                WHERE started_at >= ? AND started_at < ?
-                ORDER BY started_at DESC
+                SELECT
+                    e.id,
+                    e.started_at,
+                    e.ended_at,
+                    COALESCE(c.duration_seconds, e.duration_seconds) AS duration_seconds,
+                    COALESCE(user_label, category) AS category,
+                    e.confidence,
+                    e.peak_dbfs,
+                    e.user_label
+                FROM events e
+                LEFT JOIN clips c ON c.id = e.clip_id
+                WHERE e.started_at >= ? AND e.started_at < ?
+                ORDER BY e.started_at DESC
                 LIMIT ?
                 """,
                 (started_at, ended_at, recent_limit),
             ).fetchall()
             bird_species = connection.execute(
                 """
-                SELECT e.id, e.started_at, e.ended_at, e.duration_seconds, d.category AS species,
-                       d.confidence, e.peak_dbfs
+                SELECT
+                    e.id,
+                    e.started_at,
+                    e.ended_at,
+                    COALESCE(c.duration_seconds, e.duration_seconds) AS duration_seconds,
+                    d.category AS species,
+                    d.confidence,
+                    e.peak_dbfs
                 FROM events e
                 JOIN classifier_decisions d ON d.event_id = e.id
+                LEFT JOIN clips c ON c.id = e.clip_id
                 WHERE e.started_at >= ? AND e.started_at < ?
                   AND d.classifier_name = 'birdnet_remote'
                 ORDER BY e.started_at DESC
@@ -392,6 +388,92 @@ class SQLiteRepository:
             "bird_species_counts": [dict(row) for row in bird_species_counts],
         }
 
+    def _fetch_noise_summary(
+        self,
+        connection: sqlite3.Connection,
+        started_at: str,
+        ended_at: str,
+        bucket_mode: str,
+    ) -> sqlite3.Row | None:
+        if bucket_mode in {"day", "month"}:
+            start_day = started_at[:10]
+            end_day = ended_at[:10]
+            return connection.execute(
+                """
+                SELECT
+                    CASE WHEN SUM(interval_count) > 0
+                         THEN SUM(avg_dbfs * interval_count) / SUM(interval_count)
+                         ELSE NULL
+                    END AS avg_dbfs,
+                    MAX(max_dbfs) AS max_dbfs
+                FROM daily_stats
+                WHERE day >= ? AND day < ? AND interval_count > 0
+                """,
+                (start_day, end_day),
+            ).fetchone()
+        return connection.execute(
+            """
+            SELECT AVG(avg_dbfs) AS avg_dbfs, MAX(max_dbfs) AS max_dbfs
+            FROM noise_intervals
+            WHERE started_at >= ? AND started_at < ?
+            """,
+            (started_at, ended_at),
+        ).fetchone()
+
+    def _fetch_noise_buckets(
+        self,
+        connection: sqlite3.Connection,
+        started_at: str,
+        ended_at: str,
+        bucket_mode: str,
+    ) -> list[sqlite3.Row]:
+        if bucket_mode == "day":
+            return connection.execute(
+                """
+                SELECT
+                    day || ' 00:00:00' AS bucket_start,
+                    avg_dbfs,
+                    max_dbfs,
+                    interval_count
+                FROM daily_stats
+                WHERE day >= ? AND day < ? AND interval_count > 0
+                ORDER BY day ASC
+                """,
+                (started_at[:10], ended_at[:10]),
+            ).fetchall()
+        if bucket_mode == "month":
+            return connection.execute(
+                """
+                SELECT
+                    substr(day, 1, 7) || '-01 00:00:00' AS bucket_start,
+                    SUM(avg_dbfs * interval_count) / SUM(interval_count) AS avg_dbfs,
+                    MAX(max_dbfs) AS max_dbfs,
+                    SUM(interval_count) AS interval_count
+                FROM daily_stats
+                WHERE day >= ? AND day < ? AND interval_count > 0
+                GROUP BY substr(day, 1, 7)
+                ORDER BY bucket_start ASC
+                """,
+                (started_at[:10], ended_at[:10]),
+            ).fetchall()
+        return connection.execute(
+            """
+            SELECT
+                """
+            + _bucket_expression(bucket_mode)
+            + """
+                AS bucket_start,
+                AVG(avg_dbfs) AS avg_dbfs,
+                MAX(max_dbfs) AS max_dbfs,
+                COUNT(*) AS interval_count
+            FROM noise_intervals
+            WHERE started_at >= ? AND started_at < ?
+            GROUP BY bucket_start
+            ORDER BY bucket_start ASC
+            """,
+            (started_at, ended_at),
+        ).fetchall()
+
     def list_events(
         self,
         *,
@@ -416,28 +498,38 @@ class SQLiteRepository:
         category: str | None = None,
         started_at: str | None,
         ended_at: str | None,
-        limit: int = 100,
+        limit: int | None = 100,
     ) -> list[dict[str, Any]]:
         query = """
-            SELECT id, started_at, ended_at, duration_seconds, COALESCE(user_label, category) AS category,
-                   confidence, peak_dbfs, user_label
-            FROM events
+            SELECT
+                e.id,
+                e.started_at,
+                e.ended_at,
+                COALESCE(c.duration_seconds, e.duration_seconds) AS duration_seconds,
+                COALESCE(e.user_label, e.category) AS category,
+                e.confidence,
+                e.peak_dbfs,
+                e.user_label
+            FROM events e
+            LEFT JOIN clips c ON c.id = e.clip_id
         """
         conditions: list[str] = []
         params: list[Any] = []
         if category:
-            conditions.append("COALESCE(user_label, category) = ?")
+            conditions.append("COALESCE(e.user_label, e.category) = ?")
             params.append(category)
         if started_at:
-            conditions.append("started_at >= ?")
+            conditions.append("e.started_at >= ?")
             params.append(started_at)
         if ended_at:
-            conditions.append("started_at < ?")
+            conditions.append("e.started_at < ?")
             params.append(ended_at)
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
-        query += " ORDER BY started_at DESC LIMIT ?"
-        params.append(limit)
+        query += " ORDER BY e.started_at DESC"
+        if limit is not None:
+            query += " LIMIT ?"
+            params.append(limit)
 
         with closing(self._connect()) as connection:
             rows = connection.execute(query, tuple(params)).fetchall()
@@ -467,10 +559,17 @@ class SQLiteRepository:
         limit: int = 100,
     ) -> list[dict[str, Any]]:
         query = """
-            SELECT e.id, e.started_at, e.ended_at, e.duration_seconds,
-                   d.category AS species, d.confidence, e.peak_dbfs
+            SELECT
+                   e.id,
+                   e.started_at,
+                   e.ended_at,
+                   COALESCE(c.duration_seconds, e.duration_seconds) AS duration_seconds,
+                   d.category AS species,
+                   d.confidence,
+                   e.peak_dbfs
             FROM events e
             JOIN classifier_decisions d ON d.event_id = e.id
+            LEFT JOIN clips c ON c.id = e.clip_id
             WHERE d.classifier_name = 'birdnet_remote'
         """
         params: list[Any] = []

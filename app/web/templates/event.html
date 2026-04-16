@@ -6,11 +6,15 @@
     <p><strong>Kategoria:</strong> {{ translate_label(event.effective_category) }}</p>
     <p><strong>Start:</strong> {{ event.started_at }}</p>
     <p><strong>Koniec:</strong> {{ event.ended_at }}</p>
-    <p><strong>Czas zdarzenia:</strong> {{ '%.1f'|format(event.duration_seconds) }} s</p>
     {% if event.clip_duration is not none %}
-      <p><strong>Czas próbki audio:</strong> {{ '%.1f'|format(event.clip_duration) }} s</p>
+      <p><strong>Czas nagrania:</strong> {{ '%.1f'|format(event.clip_duration) }} s</p>
     {% elif event.summary.details.focus_clip_duration_seconds is defined %}
-      <p><strong>Czas próbki audio:</strong> {{ '%.1f'|format(event.summary.details.focus_clip_duration_seconds) }} s</p>
+      <p><strong>Czas nagrania:</strong> {{ '%.1f'|format(event.summary.details.focus_clip_duration_seconds) }} s</p>
+    {% else %}
+      <p><strong>Czas nagrania:</strong> {{ '%.1f'|format(event.duration_seconds) }} s</p>
+    {% endif %}
+    {% if event.clip_duration is not none or event.summary.details.focus_clip_duration_seconds is defined %}
+      <p><strong>Czas pełnego zdarzenia:</strong> {{ '%.1f'|format(event.duration_seconds) }} s</p>
     {% endif %}
     <p><strong>Pewność:</strong> {{ '%.2f'|format(event.confidence) }}</p>
     <p><strong>Szczyt:</strong> {{ format_dbfs(event.peak_dbfs) }}</p>

@@ -652,15 +652,51 @@ def create_app(repository: SQLiteRepository, status: RuntimeStatus, config: AppC
         dashboard = repository.get_dashboard_range(
             started_at=range_state["started_at"],
             ended_at=range_state["ended_at"],
-            recent_limit=cfg.web.recent_events_limit,
+            recent_limit=20,
             bucket_mode=range_state["bucket_mode"],
         )
+        recent_events = repository.list_events_range(category=None, started_at=None, ended_at=None, limit=20)
         chart = _build_chart(dashboard["ten_minute"], label_slice=range_state["label_slice"])
         return render_template(
             "index.html",
             range_state=range_state,
             dashboard=dashboard,
+            recent_events=recent_events,
+            range_events_url=url_for("range_events_api", period=range_state["period"], date=range_state["date"]),
             chart=chart,
+        )
+
+    @app.get("/api/events")
+    def range_events_api():
+        range_state = _resolve_range_state(request.args)
+        events = repository.list_events_range(
+            category=None,
+            started_at=range_state["started_at"],
+            ended_at=range_state["ended_at"],
+            limit=None,
+        )
+        return jsonify(
+            {
+                "events": [
+                    {
+                        "id": row["id"],
+                        "started_at": row["started_at"],
+                        "category": row["category"],
+                        "category_label": _translate_label(str(row["category"])),
+                        "duration_label": f"{float(row['duration_seconds']):.1f} s",
+                        "peak_label": _format_dbfs(row["peak_dbfs"]),
+                        "confidence_label": f"{float(row['confidence']):.2f}",
+                        "event_url": url_for("event_details", event_id=row["id"]),
+                        "category_url": url_for(
+                            "category_events",
+                            category=row["category"],
+                            period=range_state["period"],
+                            date=range_state["date"],
+                        ),
+                    }
+                    for row in events
+                ]
+            }
         )
 
     @app.get("/events/<int:event_id>")

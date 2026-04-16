@@ -74,7 +74,7 @@
             <th>ID</th>
             <th>Start</th>
             <th>Gatunek</th>
-            <th>Czas</th>
+            <th>Czas nagrania</th>
             <th>Pik</th>
             <th>Pewność</th>
           </tr>
@@ -98,25 +98,40 @@
   </section>
 
   <section class="card">
-    <h3>Ostatnie zdarzenia</h3>
-    {% if dashboard.recent_events %}
+    <details class="events-disclosure" data-range-events data-events-url="{{ range_events_url }}">
+      <summary>
+        <span>
+          <strong>Wszystkie zdarzenia w zakresie</strong>
+          <small>{{ range_state.title }}</small>
+        </span>
+        <em>{{ dashboard.summary.event_count }}</em>
+      </summary>
+      <div class="range-events-body" data-range-events-body>
+        <p>Rozwiń, aby pobrać listę zdarzeń z wybranego zakresu.</p>
+      </div>
+    </details>
+  </section>
+
+  <section class="card">
+    <h3>Ostatnie 20 zdarzeń</h3>
+    {% if recent_events %}
       <table class="events-table">
         <thead>
           <tr>
             <th>ID</th>
             <th>Start</th>
             <th>Kategoria</th>
-            <th>Czas</th>
+            <th>Czas nagrania</th>
             <th>Pik</th>
             <th>Pewność</th>
           </tr>
         </thead>
         <tbody>
-          {% for row in dashboard.recent_events %}
+          {% for row in recent_events %}
             <tr>
               <td><a href="{{ url_for('event_details', event_id=row.id) }}">#{{ row.id }}</a></td>
               <td>{{ row.started_at }}</td>
-              <td><a href="{{ url_for('category_events', category=row.category, period=range_state.period, date=range_state.date) }}">{{ translate_label(row.category) }}</a></td>
+              <td><a href="{{ url_for('category_events', category=row.category, period='day', date=row.started_at[:10]) }}">{{ translate_label(row.category) }}</a></td>
               <td>{{ '%.1f'|format(row.duration_seconds) }} s</td>
               <td>{{ format_dbfs(row.peak_dbfs) }}</td>
               <td>{{ '%.2f'|format(row.confidence) }}</td>
@@ -132,6 +147,80 @@
   <script>
     (() => {
       const chartState = new WeakMap();
+
+      const initRangeEvents = () => {
+        document.querySelectorAll("[data-range-events]").forEach((details) => {
+          const body = details.querySelector("[data-range-events-body]");
+          const eventsUrl = details.dataset.eventsUrl;
+          let loaded = false;
+          if (!body || !eventsUrl) return;
+
+          const cell = (text) => {
+            const td = document.createElement("td");
+            td.textContent = text;
+            return td;
+          };
+
+          const linkCell = (href, text) => {
+            const td = document.createElement("td");
+            const link = document.createElement("a");
+            link.href = href;
+            link.textContent = text;
+            td.append(link);
+            return td;
+          };
+
+          const renderEvents = (events) => {
+            body.replaceChildren();
+            if (!events.length) {
+              const empty = document.createElement("p");
+              empty.textContent = "Brak zapisanych zdarzeń w tym zakresie.";
+              body.append(empty);
+              return;
+            }
+            const table = document.createElement("table");
+            table.className = "events-table";
+            const thead = document.createElement("thead");
+            const headerRow = document.createElement("tr");
+            ["ID", "Start", "Kategoria", "Czas nagrania", "Pik", "Pewność"].forEach((label) => {
+              const th = document.createElement("th");
+              th.textContent = label;
+              headerRow.append(th);
+            });
+            thead.append(headerRow);
+            const tbody = document.createElement("tbody");
+            events.forEach((event) => {
+              const row = document.createElement("tr");
+              row.append(
+                linkCell(event.event_url, `#${event.id}`),
+                cell(event.started_at),
+                linkCell(event.category_url, event.category_label),
+                cell(event.duration_label),
+                cell(event.peak_label),
+                cell(event.confidence_label),
+              );
+              tbody.append(row);
+            });
+            table.append(thead, tbody);
+            body.append(table);
+          };
+
+          details.addEventListener("toggle", async () => {
+            if (!details.open || loaded) return;
+            loaded = true;
+            body.textContent = "Pobieranie zdarzeń...";
+            try {
+              const response = await fetch(eventsUrl, { headers: { Accept: "application/json" } });
+              if (!response.ok) throw new Error(`HTTP ${response.status}`);
+              const payload = await response.json();
+              renderEvents(payload.events || []);
+            } catch (_error) {
+              loaded = false;
+              body.textContent = "Nie udało się pobrać zdarzeń. Spróbuj ponownie.";
+            }
+          });
+        });
+      };
 
       const normalizeDbfs = (value, decimals = 1) => {
         const threshold = 0.5 * (10 ** (-decimals));
@@ -204,7 +293,7 @@
         });
         ctx.stroke();
 
-        const approxLabelWidth = 52;
+        const approxLabelWidth = 112;
         const maxTicks = Math.max(2, Math.floor(plotWidth / approxLabelWidth));
         const tickStep = Math.max(1, Math.ceil((labels.length - 1) / Math.max(maxTicks - 1, 1)));
         const ticks = [];
@@ -279,6 +368,7 @@
       };
 
       window.addEventListener("resize", renderAll);
+      initRangeEvents();
       renderAll();
     })();
   </script>

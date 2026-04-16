@@ -1,20 +1,29 @@
 {% macro render_range_controls(endpoint, range_state, category=None) -%}
-  <section class="card range-card">
+  {% set base_url = url_for(endpoint, category=category) if category is not none else url_for(endpoint) %}
+  <section
+    class="card range-card"
+    data-range-control
+    data-base-url="{{ base_url }}"
+    data-period="{{ range_state.period }}"
+    data-date="{{ range_state.date }}"
+  >
     <div class="range-header">
       <div>
         <p class="label">Zakres danych</p>
         <h2>{{ range_state.title }}</h2>
         <p>{{ range_state.period_label }}</p>
       </div>
-      <div class="range-nav">
+      <div class="range-nav" aria-label="Nawigacja zakresu">
         <a
           class="range-arrow"
+          aria-label="Poprzedni zakres"
           href="{{ url_for(endpoint, category=category, period=range_state.period, date=range_state.previous_date) if category is not none else url_for(endpoint, period=range_state.period, date=range_state.previous_date) }}"
         >
           ‹
         </a>
         <a
           class="range-arrow"
+          aria-label="Następny zakres"
           href="{{ url_for(endpoint, category=category, period=range_state.period, date=range_state.next_date) if category is not none else url_for(endpoint, period=range_state.period, date=range_state.next_date) }}"
         >
           ›
@@ -22,22 +31,41 @@
       </div>
     </div>
 
-    <form method="get" class="range-toolbar">
-      {% if category is not none %}
-        <input type="hidden" name="category" value="{{ category }}">
-      {% endif %}
+    <div class="range-toolbar" aria-label="Zmiana zakresu danych">
       <div class="segmented-control">
         {% for value, label in [('day', 'Dzień'), ('week', 'Tydzień'), ('month', 'Miesiąc'), ('year', 'Rok')] %}
-          <label class="segment">
-            <input type="radio" name="period" value="{{ value }}" {% if range_state.period == value %}checked{% endif %}>
-            <span>{{ label }}</span>
-          </label>
+          <a
+            class="segment-link {% if range_state.period == value %}active{% endif %}"
+            href="{{ url_for(endpoint, category=category, period=value, date=range_state.date) if category is not none else url_for(endpoint, period=value, date=range_state.date) }}"
+          >
+            {{ label }}
+          </a>
         {% endfor %}
       </div>
+
       <div class="range-picker">
-        <input type="date" name="date" value="{{ range_state.date }}">
-        <button type="submit">Pokaż</button>
+        <button class="range-date-button" type="button" data-calendar-toggle>
+          <span>{{ range_state.date }}</span>
+          <small>wybierz datę</small>
+        </button>
+        <a
+          class="range-today"
+          href="{{ url_for(endpoint, category=category, period=range_state.period) if category is not none else url_for(endpoint, period=range_state.period) }}"
+        >
+          Dzisiaj
+        </a>
+        <div class="calendar-popover" data-calendar-popover hidden>
+          <div class="calendar-head">
+            <button type="button" class="calendar-nav" data-calendar-prev aria-label="Poprzedni miesiąc">‹</button>
+            <strong data-calendar-title></strong>
+            <button type="button" class="calendar-nav" data-calendar-next aria-label="Następny miesiąc">›</button>
+          </div>
+          <div class="calendar-weekdays" aria-hidden="true">
+            <span>Pn</span><span>Wt</span><span>Śr</span><span>Cz</span><span>Pt</span><span>So</span><span>Nd</span>
+          </div>
+          <div class="calendar-grid" data-calendar-grid></div>
+        </div>
       </div>
-    </form>
+    </div>
   </section>
 {%- endmacro %}

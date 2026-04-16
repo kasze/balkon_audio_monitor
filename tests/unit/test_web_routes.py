@@ -12,13 +12,13 @@ from app.storage.database import SQLiteRepository
 from app.web.app import create_app
 
 
-def _build_event(category: str, started_at: datetime) -> CompletedEvent:
+def _build_event(category: str, started_at: datetime, *, duration_seconds: float = 4.0) -> CompletedEvent:
     summary = EventSummary(
         source_name="test",
         started_at=started_at,
-        ended_at=started_at + timedelta(seconds=4),
-        duration_seconds=4.0,
-        frame_count=8,
+        ended_at=started_at + timedelta(seconds=duration_seconds),
+        duration_seconds=duration_seconds,
+        frame_count=max(1, int(duration_seconds * 2)),
         peak_dbfs=-10.0,
         mean_dbfs=-20.0,
         mean_centroid_hz=900.0,
@@ -139,7 +139,7 @@ def test_manual_label_accepts_full_yamnet_label(tmp_path: Path) -> None:
     assert "Mowa" in html
 
 
-def test_event_details_show_clip_duration_separately_from_event_duration(tmp_path: Path) -> None:
+def test_event_details_and_lists_prefer_clip_duration_over_event_duration(tmp_path: Path) -> None:
     repository = SQLiteRepository(tmp_path / "audio_monitor.sqlite3")
     repository.initialize()
     now = datetime.now().astimezone().replace(microsecond=0)
@@ -152,7 +152,7 @@ def test_event_details_show_clip_duration_separately_from_event_duration(tmp_pat
     spectrogram_path.write_bytes(b"jpeg")
 
     repository.insert_event(
-        _build_event("street_background", now),
+        _build_event("street_background", now, duration_seconds=90.0),
         ClassifierDecision("yamnet_litert", "1", "street_background", 0.7, {}),
         ClipMetadata(
             path=clip_path,
@@ -180,8 +180,15 @@ def test_event_details_show_clip_duration_separately_from_event_duration(tmp_pat
 
     assert response.status_code == 200
     html = response.get_data(as_text=True)
-    assert "Czas zdarzenia:</strong> 4.0 s" in html
-    assert "Czas próbki audio:</strong> 4.0 s" in html
+    assert "Czas nagrania:</strong> 4.0 s" in html
+    assert "Czas pełnego zdarzenia:</strong> 90.0 s" in html
+
+    dashboard_response = client.get("/")
+    assert dashboard_response.status_code == 200
+    dashboard_html = dashboard_response.get_data(as_text=True)
+    assert "Czas nagrania" in dashboard_html
+    assert "90.0 s" not in dashboard_html
+    assert "4.0 s" in dashboard_html
 
 
 def test_health_includes_human_uptime(tmp_path: Path) -> None:
@@ -305,7 +312,8 @@ def test_dashboard_supports_period_navigation(tmp_path: Path) -> None:
     assert response.status_code == 200
     html = response.get_data(as_text=True)
     assert "Tydzień" in html
-    assert 'name="period" value="week"' in html
+    assert 'class="segment-link active"' in html
+    assert 'data-calendar-toggle' in html
     assert 'href="/birds?period=week&amp;date=2026-04-13"' in html
 
 

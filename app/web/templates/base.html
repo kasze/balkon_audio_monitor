@@ -34,5 +34,79 @@
     <main>
       {% block content %}{% endblock %}
     </main>
+    <script>
+      (() => {
+        document.querySelectorAll("[data-range-control]").forEach((control) => {
+          const baseUrl = control.dataset.baseUrl || "/";
+          const period = control.dataset.period || "day";
+          const selectedDate = control.dataset.date || new Date().toISOString().slice(0, 10);
+          const toggle = control.querySelector("[data-calendar-toggle]");
+          const popover = control.querySelector("[data-calendar-popover]");
+          const title = control.querySelector("[data-calendar-title]");
+          const grid = control.querySelector("[data-calendar-grid]");
+          const prev = control.querySelector("[data-calendar-prev]");
+          const next = control.querySelector("[data-calendar-next]");
+          if (!toggle || !popover || !title || !grid || !prev || !next) return;
+
+          const [selectedYear, selectedMonth] = selectedDate.split("-").map(Number);
+          let visibleDate = new Date(selectedYear, selectedMonth - 1, 1);
+          const pad = (value) => String(value).padStart(2, "0");
+          const isoDate = (year, month, day) => `${year}-${pad(month)}-${pad(day)}`;
+          const monthTitle = new Intl.DateTimeFormat("pl-PL", { month: "long", year: "numeric" });
+
+          const goToDate = (date) => {
+            const params = new URLSearchParams({ period, date });
+            window.location.assign(`${baseUrl}?${params.toString()}`);
+          };
+
+          const renderCalendar = () => {
+            const year = visibleDate.getFullYear();
+            const month = visibleDate.getMonth();
+            const firstDay = new Date(year, month, 1);
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const leadingEmpty = (firstDay.getDay() + 6) % 7;
+            title.textContent = monthTitle.format(firstDay);
+            grid.replaceChildren();
+
+            for (let index = 0; index < leadingEmpty; index += 1) {
+              const empty = document.createElement("span");
+              empty.className = "calendar-empty";
+              grid.append(empty);
+            }
+
+            for (let day = 1; day <= daysInMonth; day += 1) {
+              const button = document.createElement("button");
+              const value = isoDate(year, month + 1, day);
+              button.type = "button";
+              button.textContent = String(day);
+              button.className = "calendar-day";
+              if (value === selectedDate) {
+                button.classList.add("active");
+              }
+              button.addEventListener("click", () => goToDate(value));
+              grid.append(button);
+            }
+          };
+
+          toggle.addEventListener("click", () => {
+            popover.hidden = !popover.hidden;
+            if (!popover.hidden) renderCalendar();
+          });
+          prev.addEventListener("click", () => {
+            visibleDate = new Date(visibleDate.getFullYear(), visibleDate.getMonth() - 1, 1);
+            renderCalendar();
+          });
+          next.addEventListener("click", () => {
+            visibleDate = new Date(visibleDate.getFullYear(), visibleDate.getMonth() + 1, 1);
+            renderCalendar();
+          });
+          document.addEventListener("click", (event) => {
+            if (!popover.hidden && !control.contains(event.target)) {
+              popover.hidden = true;
+            }
+          });
+        });
+      })();
+    </script>
   </body>
 </html>

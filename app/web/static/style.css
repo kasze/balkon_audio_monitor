@@ -71,6 +71,8 @@ main {
   max-width: 1180px;
   margin: 0 auto;
   padding: 0 24px 40px;
+  display: grid;
+  gap: var(--space-panel);
 }
 
 .page-header {
@@ -135,7 +137,7 @@ main {
 .grid {
   display: grid;
   gap: var(--space-panel);
-  margin-bottom: var(--space-panel);
+  margin-bottom: 0;
 }
 
 .grid.two {
@@ -177,7 +179,9 @@ main {
 }
 
 .range-card {
-  margin-bottom: var(--space-panel);
+  margin-bottom: 0;
+  overflow: visible;
+  z-index: 20;
 }
 
 .range-header {
@@ -200,6 +204,14 @@ main {
 .range-nav {
   display: flex;
   gap: 10px;
+}
+
+.range-arrow,
+.range-today,
+.range-date-button,
+.calendar-nav,
+.calendar-day {
+  font: inherit;
 }
 
 .range-arrow {
@@ -234,6 +246,26 @@ main {
   border: 1px solid rgba(255, 255, 255, 0.26);
 }
 
+.segment-link {
+  display: block;
+  padding: 10px 14px;
+  border-radius: 16px;
+  text-align: center;
+  color: rgba(44, 57, 88, 0.78);
+  transition: background 140ms ease, color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+}
+
+.segment-link:hover {
+  color: rgba(21, 35, 69, 0.96);
+  background: rgba(255, 255, 255, 0.34);
+}
+
+.segment-link.active {
+  background: rgba(255, 255, 255, 0.66);
+  color: rgba(21, 35, 69, 0.96);
+  box-shadow: 0 8px 18px rgba(31, 56, 110, 0.08);
+}
+
 .segment {
   position: relative;
   cursor: pointer;
@@ -263,14 +295,140 @@ main {
 }
 
 .range-picker {
+  position: relative;
   display: flex;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
   margin-left: auto;
 }
 
-.range-picker input[type="date"] {
+.range-date-button,
+.range-today {
+  width: auto;
   margin-top: 0;
+  border-radius: 18px;
+}
+
+.range-date-button {
+  min-width: 172px;
+  display: grid;
+  gap: 2px;
+  padding: 10px 14px;
+  text-align: left;
+  color: rgba(23, 39, 73, 0.92);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(242, 247, 255, 0.58));
+  border: 1px solid rgba(122, 149, 202, 0.24);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.52), 0 8px 22px rgba(31, 56, 110, 0.08);
+}
+
+.range-date-button span {
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.range-date-button small {
+  color: var(--muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.range-today {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 0 14px;
+  color: rgba(44, 57, 88, 0.8);
+  background: rgba(255, 255, 255, 0.32);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+}
+
+.calendar-popover {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 10;
+  width: min(330px, calc(100vw - 32px));
+  padding: 14px;
+  border-radius: 24px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(245, 249, 255, 0.76)),
+    radial-gradient(circle at top left, rgba(126, 203, 255, 0.2), transparent 44%);
+  border: 1px solid rgba(126, 151, 202, 0.26);
+  box-shadow: 0 24px 60px rgba(21, 36, 74, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.62);
+  backdrop-filter: blur(22px) saturate(1.2);
+}
+
+.calendar-head {
+  display: grid;
+  grid-template-columns: 38px 1fr 38px;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.calendar-head strong {
+  text-align: center;
+  text-transform: capitalize;
+}
+
+.calendar-nav {
+  width: 38px;
+  height: 38px;
+  margin: 0;
+  padding: 0;
+  border-radius: 14px;
+  color: rgba(31, 47, 83, 0.9);
+  background: rgba(255, 255, 255, 0.52);
+  border: 1px solid rgba(122, 149, 202, 0.18);
+  box-shadow: none;
+}
+
+.calendar-weekdays,
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.calendar-weekdays {
+  margin-bottom: 8px;
+  color: rgba(63, 78, 113, 0.62);
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.calendar-day,
+.calendar-empty {
+  aspect-ratio: 1;
+}
+
+.calendar-day {
+  width: auto;
+  margin: 0;
+  padding: 0;
+  border-radius: 14px;
+  color: rgba(24, 39, 72, 0.9);
+  background: rgba(255, 255, 255, 0.4);
+  border: 1px solid rgba(122, 149, 202, 0.14);
+  box-shadow: none;
+  font-weight: 700;
+}
+
+.calendar-day:hover {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.calendar-day.active {
+  color: #f8fbff;
+  background: linear-gradient(135deg, rgba(33, 118, 255, 0.96), rgba(113, 163, 255, 0.92));
+  border-color: rgba(75, 128, 242, 0.34);
+  box-shadow: 0 10px 24px rgba(55, 107, 228, 0.22);
 }
 
 .metric {
@@ -386,7 +544,8 @@ main {
 
 .chart-card {
   overflow: hidden;
-  margin-bottom: var(--space-panel);
+  margin-bottom: 0;
+  z-index: 1;
 }
 
 .chart-card h3 {
@@ -474,6 +633,49 @@ main {
   background: rgba(255, 255, 255, 0.24);
 }
 
+.events-disclosure summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.events-disclosure summary::-webkit-details-marker {
+  display: none;
+}
+
+.events-disclosure summary span {
+  display: grid;
+  gap: 3px;
+}
+
+.events-disclosure summary strong {
+  font-size: 1.12rem;
+  letter-spacing: -0.03em;
+}
+
+.events-disclosure summary small {
+  color: var(--muted);
+}
+
+.events-disclosure summary em {
+  min-width: 42px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  text-align: center;
+  font-style: normal;
+  font-weight: 800;
+  color: rgba(27, 48, 92, 0.92);
+  background: rgba(255, 255, 255, 0.46);
+  border: 1px solid rgba(122, 149, 202, 0.18);
+}
+
+.events-disclosure[open] summary {
+  margin-bottom: var(--space-panel-tight);
+}
+
 audio,
 select,
 button,
@@ -559,10 +761,12 @@ form {
 
 .settings-form {
   margin-top: 0;
+  display: grid;
+  gap: var(--space-panel);
 }
 
 .settings-card {
-  margin-bottom: var(--space-panel);
+  margin-bottom: 0;
 }
 
 .settings-banner {
@@ -652,6 +856,19 @@ form {
 .settings-actions p {
   margin: 0;
   color: var(--muted);
+}
+
+.autosave-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 10px 14px;
+  border-radius: 999px;
+  color: rgba(31, 47, 83, 0.84);
+  background: rgba(255, 255, 255, 0.34);
+  border: 1px solid rgba(122, 149, 202, 0.18);
+  font-weight: 700;
 }
 
 label {
@@ -761,7 +978,7 @@ button:active {
   }
 
   .chart-card {
-    margin-bottom: var(--space-panel-mobile);
+    margin-bottom: 0;
   }
 
   .settings-actions {
