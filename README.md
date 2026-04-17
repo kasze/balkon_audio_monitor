@@ -248,8 +248,6 @@ sudo systemctl status birdnet-server
 journalctl -u birdnet-server -n 100 --no-pager
 ```
 
-Jeśli instalujesz unit ręcznie, pamiętaj żeby `User=` w `birdnet-server.service` wskazywał istniejącego użytkownika na Raspberry Pi, np. `kasze`, a nie domyślne `pi`.
-
 ## Pliki i katalogi
 
 - `configs/config.yaml` lokalna konfiguracja aplikacji
