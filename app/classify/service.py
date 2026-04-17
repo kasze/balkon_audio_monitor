@@ -65,6 +65,12 @@ YAMNET_CATEGORY_WEIGHTS: dict[str, dict[str, float]] = {
     },
 }
 
+YAMNET_DISCARD_LABELS = {
+    "White noise",
+    "Silence",
+    "Inside, small room",
+}
+
 
 @dataclass(slots=True)
 class YAMNetModelOutput:
@@ -179,14 +185,36 @@ class AppClassifier:
         try:
             decision = self.yamnet.classify(event)
             trigger_labels = _extract_bird_trigger_labels(decision, self.config.yamnet_min_category_score)
+            decision.details = {
+                **decision.details,
+                "birdnet_trigger_labels": trigger_labels,
+            }
             if trigger_labels:
-                try:
-                    birdnet_decision = self.birdnet.identify(event, trigger_labels, decision)
-                except Exception as exc:  # pragma: no cover - network/runtime dependent
-                    LOGGER.warning("BirdNET API lookup failed, keeping YAMNet decision: %s", exc)
+                if not self.birdnet.is_enabled:
+                    decision.details = {
+                        **decision.details,
+                        "birdnet_lookup_status": "disabled",
+                        "birdnet_lookup_reason": "BirdNET API nie jest skonfigurowane",
+                    }
                 else:
-                    if birdnet_decision is not None:
-                        decision = birdnet_decision
+                    try:
+                        birdnet_decision = self.birdnet.identify(event, trigger_labels, decision)
+                    except Exception as exc:  # pragma: no cover - network/runtime dependent
+                        LOGGER.warning("BirdNET API lookup failed, keeping YAMNet decision: %s", exc)
+                        decision.details = {
+                            **decision.details,
+                            "birdnet_lookup_status": "error",
+                            "birdnet_lookup_reason": str(exc),
+                        }
+                    else:
+                        if birdnet_decision is not None:
+                            decision = birdnet_decision
+                        else:
+                            decision.details = {
+                                **decision.details,
+                                "birdnet_lookup_status": "no_result",
+                                "birdnet_lookup_reason": "BirdNET nie zwrócił wyniku powyżej progu",
+                            }
         except Exception as exc:  # pragma: no cover - exercised on device when runtime/model fails
             LOGGER.warning("YAMNet unavailable, falling back to heuristics: %s", exc)
             decision = self.heuristics.classify(event.summary)
@@ -286,6 +314,15 @@ class YAMNetClassifier:
         for category, weights in YAMNET_CATEGORY_WEIGHTS.items():
             weighted_scores = [label_scores.get(label, 0.0) * weight for label, weight in weights.items()]
             category_scores[category] = round(float(max(weighted_scores, default=0.0)), 6)
+
+        if top_label_name in YAMNET_DISCARD_LABELS:
+            return (
+                "discarded",
+                round(float(top_label_score), 6),
+                category_scores,
+                top_label_name,
+                round(float(top_label_score), 6),
+            )
 
         non_background = {k: v for k, v in category_scores.items() if k != "street_background"}
         top_category = max(non_background, key=non_background.get, default="street_background")
@@ -427,7 +464,7 @@ def _extract_bird_trigger_labels(decision: ClassifierDecision, min_score: float)
     labels: list[str] = []
     resolved_label = details.get("resolved_label")
     resolved_score = details.get("resolved_label_score")
-    if isinstance(resolved_label, str) and _is_bird_yamnet_label(resolved_label):
+    if isinstance(resolved_label, str) and _should_run_birdnet_for_yamnet_label(resolved_label):
         score = float(resolved_score) if isinstance(resolved_score, int | float) else 0.0
         if score >= min_score:
             labels.append(resolved_label)
@@ -438,7 +475,7 @@ def _extract_bird_trigger_labels(decision: ClassifierDecision, min_score: float)
             if not isinstance(item, dict):
                 continue
             label = item.get("label")
-            if not isinstance(label, str) or not _is_bird_yamnet_label(label):
+            if not isinstance(label, str) or not _should_run_birdnet_for_yamnet_label(label):
                 continue
             mean_score = float(item.get("mean_score")) if isinstance(item.get("mean_score"), int | float) else 0.0
             peak_score = float(item.get("peak_score")) if isinstance(item.get("peak_score"), int | float) else 0.0
@@ -452,8 +489,57 @@ def _extract_bird_trigger_labels(decision: ClassifierDecision, min_score: float)
     return deduped
 
 
-def _is_bird_yamnet_label(label: str) -> bool:
-    return "bird" in label.casefold()
+_BIRD_TRIGGER_EXACT_LABELS = {
+    "Bird",
+    "Bird vocalization, bird call, bird song",
+    "Bird flight, flapping wings",
+    "Animal",
+    "Domestic animals, pets",
+    "Wild animals",
+    "Livestock, farm animals, working animals",
+    "Fowl",
+    "Chicken, rooster",
+    "Cluck",
+    "Crowing, cock-a-doodle-doo",
+    "Turkey",
+    "Gobble",
+    "Duck",
+    "Quack",
+    "Goose",
+    "Honk",
+    "Pigeon, dove",
+    "Coo",
+    "Crow",
+    "Caw",
+    "Owl",
+    "Hoot",
+    "Canidae, dogs, wolves",
+    "Dog",
+    "Whimper (dog)",
+    "Howl",
+    "Growling",
+    "Cat",
+    "Caterwaul",
+    "Rodents, rats, mice",
+    "Whimper (dog)",
+    "Roaring cats (lions, tigers)",
+    "Mouse",
+    "Pig",
+    "Oink",
+    "Goat",
+    "Bleat",
+    "Sheep",
+    "Horse",
+    "Moo",
+    "Cattle, bovinae",
+}
+
+
+def _should_run_birdnet_for_yamnet_label(label: str) -> bool:
+    normalized = label.casefold()
+    if "bird" in normalized or "animal" in normalized:
+        return True
+    return label in _BIRD_TRIGGER_EXACT_LABELS
 
 
 def _build_wav_bytes(samples: np.ndarray, sample_rate: int) -> bytes:

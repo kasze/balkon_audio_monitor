@@ -14,8 +14,11 @@ fi
 TARGET="${1:-${AUDIO_MONITOR_TARGET:-pi@raspberrypi.local}}"
 REMOTE_DIR="${2:-${AUDIO_MONITOR_REMOTE_DIR:-/opt/audio-monitor}}"
 REMOTE_USER="${TARGET%@*}"
+INSTALL_BIRDNET="${AUDIO_MONITOR_INSTALL_BIRDNET:-0}"
+SKIP_BOOTSTRAP="${AUDIO_MONITOR_SKIP_BOOTSTRAP:-0}"
 TMP_UNIT_FILE="$(mktemp)"
-trap 'rm -f "${TMP_UNIT_FILE}"' EXIT
+TMP_BIRDNET_UNIT_FILE="$(mktemp)"
+trap 'rm -f "${TMP_UNIT_FILE}" "${TMP_BIRDNET_UNIT_FILE}"' EXIT
 
 cd "${ROOT_DIR}"
 
@@ -129,6 +132,10 @@ if [ -n "${SSH_PASSWORD}" ]; then
 fi
 
 sed "s/^User=.*/User=${REMOTE_USER}/" systemd/audio-monitor.service > "${TMP_UNIT_FILE}"
+sed \
+  -e "s/^User=.*/User=${REMOTE_USER}/" \
+  -e "s|/opt/audio-monitor|${REMOTE_DIR}|g" \
+  systemd/birdnet-server.service > "${TMP_BIRDNET_UNIT_FILE}"
 
 SYSTEM_DEPS_HASH="$(hash_file scripts/install_system_deps.sh)"
 PYTHON_DEPS_HASH="$(
@@ -137,7 +144,14 @@ PYTHON_DEPS_HASH="$(
     hash_file scripts/install_python_deps.sh
   } | hash_text
 )"
+BIRDNET_DEPS_HASH="$(
+  {
+    hash_file scripts/install_birdnet_server.sh
+    hash_file scripts/configure_birdnet_url.py
+  } | hash_text
+)"
 SYSTEMD_UNIT_HASH="$(hash_file "${TMP_UNIT_FILE}")"
+BIRDNET_UNIT_HASH="$(hash_file "${TMP_BIRDNET_UNIT_FILE}")"
 
 log_step 1 "Preparing remote directory on ${TARGET}"
 log_info "remote dir: ${REMOTE_DIR}"
@@ -151,6 +165,8 @@ RSYNC_OUTPUT="$(
   --exclude ".pytest_cache" \
   --exclude "__pycache__" \
   --exclude ".deploy/" \
+  --exclude ".birdnet/" \
+  --exclude ".birdnet-venv/" \
   --exclude "data/" \
   "${ROOT_DIR}/" "${TARGET}:${REMOTE_DIR}/"
 )"
@@ -169,26 +185,47 @@ system_deps_changed=0
 python_deps_changed=0
 venv_created=0
 unit_changed=0
+birdnet_deps_changed=0
+birdnet_unit_changed=0
 
-if [ ! -f .deploy/system_deps.sha256 ] || [ "\$(cat .deploy/system_deps.sha256)" != "${SYSTEM_DEPS_HASH}" ]; then
-  ./scripts/install_system_deps.sh
-  printf '%s\n' "${SYSTEM_DEPS_HASH}" > .deploy/system_deps.sha256
-  system_deps_changed=1
-fi
+if [ "${SKIP_BOOTSTRAP}" != "1" ]; then
+  if [ ! -f .deploy/system_deps.sha256 ] || [ "\$(cat .deploy/system_deps.sha256)" != "${SYSTEM_DEPS_HASH}" ]; then
+    ./scripts/install_system_deps.sh
+    printf '%s\n' "${SYSTEM_DEPS_HASH}" > .deploy/system_deps.sha256
+    system_deps_changed=1
+  fi
 
-if [ ! -d .venv ]; then
-  ./scripts/setup_venv.sh .venv
-  venv_created=1
-fi
+  if [ ! -d .venv ]; then
+    ./scripts/setup_venv.sh .venv
+    venv_created=1
+  fi
 
-if [ "\${venv_created}" -eq 1 ] || [ ! -f .deploy/python_deps.sha256 ] || [ "\$(cat .deploy/python_deps.sha256)" != "${PYTHON_DEPS_HASH}" ]; then
-  ./scripts/install_python_deps.sh .venv
-  printf '%s\n' "${PYTHON_DEPS_HASH}" > .deploy/python_deps.sha256
-  python_deps_changed=1
-fi
+  if [ "\${venv_created}" -eq 1 ] || [ ! -f .deploy/python_deps.sha256 ] || [ "\$(cat .deploy/python_deps.sha256)" != "${PYTHON_DEPS_HASH}" ]; then
+    ./scripts/install_python_deps.sh .venv
+    printf '%s\n' "${PYTHON_DEPS_HASH}" > .deploy/python_deps.sha256
+    python_deps_changed=1
+  fi
 
-if [ ! -f configs/config.yaml ]; then
-  cp configs/config.yaml.example configs/config.yaml
+  if [ ! -f configs/config.yaml ]; then
+    cp configs/config.yaml.example configs/config.yaml
+  fi
+  python3 scripts/configure_birdnet_url.py configs/config.yaml http://127.0.0.1:8081
+
+  if [ "${INSTALL_BIRDNET}" = "1" ]; then
+    if [ ! -f .deploy/birdnet_deps.sha256 ] || [ "\$(cat .deploy/birdnet_deps.sha256)" != "${BIRDNET_DEPS_HASH}" ]; then
+      ./scripts/install_birdnet_server.sh .birdnet/BirdNET-Analyzer .birdnet-venv
+      printf '%s\n' "${BIRDNET_DEPS_HASH}" > .deploy/birdnet_deps.sha256
+      birdnet_deps_changed=1
+    fi
+  fi
+else
+  if [ ! -d .venv ]; then
+    echo "SKIP_BOOTSTRAP=1 requires an existing .venv on the remote host."
+    exit 1
+  fi
+  if [ ! -f configs/config.yaml ]; then
+    cp configs/config.yaml.example configs/config.yaml
+  fi
 fi
 
 existing_unit_hash=""
@@ -199,16 +236,32 @@ if [ "\${existing_unit_hash}" != "${SYSTEMD_UNIT_HASH}" ]; then
   unit_changed=1
 fi
 
+existing_birdnet_unit_hash=""
+if sudo test -f /etc/systemd/system/birdnet-server.service; then
+  existing_birdnet_unit_hash="\$(sudo sha256sum /etc/systemd/system/birdnet-server.service | awk '{print \$1}')"
+fi
+if [ "\${existing_birdnet_unit_hash}" != "${BIRDNET_UNIT_HASH}" ]; then
+  birdnet_unit_changed=1
+fi
+
 printf 'system_deps_changed=%s\n' "\${system_deps_changed}"
 printf 'python_deps_changed=%s\n' "\${python_deps_changed}"
 printf 'venv_created=%s\n' "\${venv_created}"
 printf 'unit_changed=%s\n' "\${unit_changed}"
+printf 'birdnet_deps_changed=%s\n' "\${birdnet_deps_changed}"
+printf 'birdnet_unit_changed=%s\n' "\${birdnet_unit_changed}"
 EOF
 
 log_step 3 "Running remote bootstrap"
-BOOTSTRAP_OUTPUT="$(run_ssh "${TARGET}" "${REMOTE_BOOTSTRAP}")"
+if ! BOOTSTRAP_OUTPUT="$(run_ssh "${TARGET}" "${REMOTE_BOOTSTRAP}" 2>&1)"; then
+  printf '%s\n' "${BOOTSTRAP_OUTPUT}" | sed 's/^/  - /'
+  echo "Remote bootstrap failed."
+  exit 1
+fi
 printf '%s\n' "${BOOTSTRAP_OUTPUT}" | sed 's/^/  - /'
 UNIT_CHANGED="$(printf '%s\n' "${BOOTSTRAP_OUTPUT}" | awk -F= '/^unit_changed=/{print $2}')"
+BIRDNET_DEPS_CHANGED="$(printf '%s\n' "${BOOTSTRAP_OUTPUT}" | awk -F= '/^birdnet_deps_changed=/{print $2}')"
+BIRDNET_UNIT_CHANGED="$(printf '%s\n' "${BOOTSTRAP_OUTPUT}" | awk -F= '/^birdnet_unit_changed=/{print $2}')"
 
 if [ "${UNIT_CHANGED}" = "1" ]; then
   log_step 4 "Updating systemd unit"
@@ -217,13 +270,33 @@ if [ "${UNIT_CHANGED}" = "1" ]; then
   run_ssh "${TARGET}" "sudo install -m 0644 ${REMOTE_DIR}/.deploy/audio-monitor.service.tmp /etc/systemd/system/audio-monitor.service && rm -f ${REMOTE_DIR}/.deploy/audio-monitor.service.tmp"
 fi
 
+if [ "${INSTALL_BIRDNET}" = "1" ] && [ "${BIRDNET_UNIT_CHANGED}" = "1" ]; then
+  log_step 5 "Updating BirdNET systemd unit"
+  run_rsync -a "${TMP_BIRDNET_UNIT_FILE}" "${TARGET}:${REMOTE_DIR}/.deploy/birdnet-server.service.tmp"
+  run_ssh "${TARGET}" "sudo mkdir -p /etc/systemd/system"
+  run_ssh "${TARGET}" "sudo install -m 0644 ${REMOTE_DIR}/.deploy/birdnet-server.service.tmp /etc/systemd/system/birdnet-server.service && rm -f ${REMOTE_DIR}/.deploy/birdnet-server.service.tmp"
+fi
+
 if [ -n "${RSYNC_OUTPUT}" ] || [ "${UNIT_CHANGED}" = "1" ]; then
-  log_step 5 "Reloading and restarting service"
+  log_step 6 "Reloading and restarting service"
   run_ssh "${TARGET}" "sudo systemctl daemon-reload && sudo systemctl enable audio-monitor && sudo systemctl restart audio-monitor"
   log_info "service restarted"
 else
-  log_step 5 "Skipping restart"
+  log_step 6 "Skipping app restart"
   log_info "no file or unit changes detected"
+fi
+
+if [ "${INSTALL_BIRDNET}" = "1" ] && { [ "${BIRDNET_DEPS_CHANGED}" = "1" ] || [ "${BIRDNET_UNIT_CHANGED}" = "1" ]; }; then
+  log_step 7 "Reloading and restarting BirdNET"
+  run_ssh "${TARGET}" "sudo systemctl daemon-reload && sudo systemctl enable birdnet-server && sudo systemctl restart birdnet-server"
+  log_info "BirdNET service restarted"
+else
+  log_step 7 "Skipping BirdNET restart"
+  if [ "${INSTALL_BIRDNET}" = "1" ]; then
+    log_info "BirdNET dependencies and unit unchanged"
+  else
+    log_info "set AUDIO_MONITOR_INSTALL_BIRDNET=1 to install or update local BirdNET"
+  fi
 fi
 
 log_step done "Deploy finished"

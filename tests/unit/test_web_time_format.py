@@ -22,6 +22,7 @@ from app.web.app import (
     _read_memory_available_gb,
     _read_system_uptime_seconds,
     _read_system_status,
+    _read_systemd_service_status,
     _translate_classifier_name,
     _translate_label,
 )
@@ -98,7 +99,23 @@ def test_describe_classifier_decision_marks_external_api_when_present() -> None:
                 "external_api_name": "BirdNET API",
                 "birdnet_common_name": "Bogatka",
                 "birdnet_scientific_name": "Parus major",
-                "birdnet_trigger_labels": ["Bird", "Bird vocalization, bird call, bird song"],
+                "birdnet_results": [
+                    {
+                        "species_label": "Poecile major",
+                        "common_name": "Bogatka",
+                        "scientific_name": "Parus major",
+                        "score": 0.9321,
+                    },
+                    {
+                        "species_label": "Poecile palustris",
+                        "common_name": "Sikora uboga",
+                        "scientific_name": "Poecile palustris",
+                        "score": 0.221,
+                    },
+                ],
+                "birdnet_trigger_labels": ["Bird", "Animal", "Bird vocalization, bird call, bird song"],
+                "birdnet_lookup_status": "no_result",
+                "birdnet_lookup_reason": "BirdNET nie zwrócił wyniku powyżej progu",
             },
         }
     )
@@ -108,7 +125,33 @@ def test_describe_classifier_decision_marks_external_api_when_present() -> None:
     assert trace["external_api_name"] == "API BirdNET"
     assert trace["birdnet_common_name"] == "Bogatka"
     assert trace["birdnet_scientific_name"] == "Parus major"
-    assert trace["birdnet_trigger_labels"] == ["Bird", "Bird vocalization, bird call, bird song"]
+    assert trace["birdnet_results"][0]["common_name"] == "Bogatka"
+    assert trace["birdnet_results"][0]["score"] == 0.9321
+    assert trace["birdnet_lookup_status"] == "BirdNET bez wyniku"
+    assert trace["birdnet_lookup_reason"] == "BirdNET nie zwrócił wyniku powyżej progu"
+    assert trace["birdnet_trigger_labels"] == ["Bird", "Animal", "Bird vocalization, bird call, bird song"]
+    assert trace["birdnet_trigger_summary"] == "BirdNET uruchomiono przez etykietę ptasią i zwierzęcą YAMNet"
+
+
+def test_describe_classifier_decision_marks_disabled_birdnet_lookup() -> None:
+    trace = _describe_classifier_decision(
+        {
+            "classifier_name": "yamnet_litert",
+            "classifier_version": "1",
+            "details": {
+                "cache_hit": False,
+                "resolved_label": "Animal",
+                "resolved_label_score": 0.361,
+                "birdnet_trigger_labels": ["Animal", "Bird"],
+                "birdnet_lookup_status": "disabled",
+                "birdnet_lookup_reason": "BirdNET API nie jest skonfigurowane",
+            },
+        }
+    )
+
+    assert trace["birdnet_lookup_status"] == "BirdNET nie skonfigurowano"
+    assert trace["birdnet_lookup_reason"] == "BirdNET API nie jest skonfigurowane"
+    assert trace["birdnet_trigger_summary"] == "BirdNET uruchomiono przez etykietę ptasią i zwierzęcą YAMNet"
 
 
 def test_read_cpu_load_percent(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -164,7 +207,7 @@ def test_read_memory_and_disk_and_compose_system_status(
             if str(self) == "/sys/class/thermal/thermal_zone0/temp"
             else meminfo
         ),
-    )
+        )
 
     config = AppConfig(
         base_dir=tmp_path,
@@ -179,6 +222,25 @@ def test_read_memory_and_disk_and_compose_system_status(
     assert status["cpu_temperature_c"] == 52.0
     assert status["memory_available_gb"] == 1.0
     assert status["disk_free_gb"] == 7.0
+    assert status["birdnet_service"] == {"active": None, "enabled": None}
+
+
+def test_read_systemd_service_status(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(args, check, capture_output, text, timeout):
+        calls.append(args)
+        if args[1] == "is-active":
+            return CompletedProcess(args=args, returncode=0, stdout="active\n", stderr="")
+        return CompletedProcess(args=args, returncode=0, stdout="enabled\n", stderr="")
+
+    monkeypatch.setattr("app.web.app.subprocess.run", fake_run)
+
+    status = _read_systemd_service_status("birdnet-server")
+
+    assert status == {"active": "active", "enabled": "enabled"}
+    assert calls[0][:2] == ["systemctl", "is-active"]
+    assert calls[1][:2] == ["systemctl", "is-enabled"]
 
 
 def test_translate_label_and_classifier_name() -> None:

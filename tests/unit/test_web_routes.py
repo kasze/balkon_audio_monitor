@@ -104,6 +104,85 @@ def test_manual_label_updates_event_and_category_views(tmp_path: Path) -> None:
     assert "/events/1" in category_response.get_data(as_text=True)
 
 
+def test_birdnet_results_show_badge_in_lists(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "audio_monitor.sqlite3")
+    repository.initialize()
+    now = datetime.now().astimezone().replace(microsecond=0)
+
+    repository.insert_event(
+        _build_event("Bird vocalization, bird call, bird song", now),
+        ClassifierDecision(
+            "birdnet_remote",
+            "1",
+            "Bogatka",
+            0.88,
+            {
+                "used_external_api": True,
+                "external_api_name": "BirdNET API",
+                "birdnet_common_name": "Bogatka",
+                "birdnet_scientific_name": "Parus major",
+                "birdnet_trigger_labels": ["Bird", "Animal"],
+                "birdnet_trigger_summary": "BirdNET uruchomiono przez etykietę ptasią i zwierzęcą YAMNet",
+            },
+        ),
+        None,
+    )
+
+    app = create_app(
+        repository,
+        RuntimeStatus(),
+        AppConfig(
+            base_dir=tmp_path,
+            storage=StorageConfig(database_path=repository.database_path, clip_dir=tmp_path / "clips"),
+        ),
+    )
+    client = app.test_client()
+
+    dashboard_html = client.get("/").get_data(as_text=True)
+    birds_html = client.get("/birds").get_data(as_text=True)
+
+    assert "BirdNET" in dashboard_html
+    assert "BirdNET" in birds_html
+
+
+def test_recent_events_show_birdnet_badge_for_remote_results(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "audio_monitor.sqlite3")
+    repository.initialize()
+    now = datetime.now().astimezone().replace(microsecond=0)
+
+    repository.insert_event(
+        _build_event("Bird vocalization, bird call, bird song", now),
+        ClassifierDecision(
+            "birdnet_remote",
+            "1",
+            "Bogatka",
+            0.88,
+            {
+                "used_external_api": True,
+                "external_api_name": "BirdNET API",
+                "birdnet_common_name": "Bogatka",
+                "birdnet_scientific_name": "Parus major",
+                "birdnet_trigger_labels": ["Bird", "Animal"],
+                "birdnet_trigger_summary": "BirdNET uruchomiono przez etykietę ptasią i zwierzęcą YAMNet",
+            },
+        ),
+        None,
+    )
+
+    app = create_app(
+        repository,
+        RuntimeStatus(),
+        AppConfig(
+            base_dir=tmp_path,
+            storage=StorageConfig(database_path=repository.database_path, clip_dir=tmp_path / "clips"),
+        ),
+    )
+    client = app.test_client()
+
+    html = client.get("/").get_data(as_text=True)
+    assert "BirdNET" in html
+
+
 def test_manual_label_accepts_full_yamnet_label(tmp_path: Path) -> None:
     repository = SQLiteRepository(tmp_path / "audio_monitor.sqlite3")
     repository.initialize()
@@ -267,12 +346,14 @@ def test_birds_page_and_dashboard_show_recent_bird_species(tmp_path: Path) -> No
     dashboard_html = dashboard_response.get_data(as_text=True)
     assert 'href="/birds"' in dashboard_html
     assert "Bogatka" in dashboard_html
+    assert "BirdNET" in dashboard_html
 
     birds_response = client.get("/birds")
     assert birds_response.status_code == 200
     birds_html = birds_response.get_data(as_text=True)
     assert "Ostatnio rozpoznane gatunki" in birds_html
     assert "Bogatka" in birds_html
+    assert "BirdNET" in birds_html
     assert "/events/1" in birds_html
     assert "street_background" not in birds_html
 

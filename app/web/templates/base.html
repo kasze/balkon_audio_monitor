@@ -28,6 +28,14 @@
           <p><strong>Temp CPU</strong> {{ ('%.1f'|format(system_status.cpu_temperature_c) ~ ' C') if system_status.cpu_temperature_c is not none else 'brak danych' }}</p>
           <p><strong>RAM</strong> {{ ('%.2f'|format(system_status.memory_available_gb) ~ ' GB') if system_status.memory_available_gb is not none else 'brak danych' }}</p>
           <p><strong>Dysk</strong> {{ ('%.2f'|format(system_status.disk_free_gb) ~ ' GB') if system_status.disk_free_gb is not none else 'brak danych' }}</p>
+          <p>
+            <strong>BirdNET</strong>
+            {% if system_status.birdnet_service and system_status.birdnet_service.active %}
+              {{ 'działa' if system_status.birdnet_service.active == 'active' else system_status.birdnet_service.active }}
+            {% else %}
+              brak danych
+            {% endif %}
+          </p>
         </div>
       </div>
     </header>

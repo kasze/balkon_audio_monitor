@@ -85,8 +85,17 @@
                 {% if trace.birdnet_common_name %}
                   <p><strong>Gatunek BirdNET:</strong> {{ trace.birdnet_common_name }}{% if trace.birdnet_scientific_name %} ({{ trace.birdnet_scientific_name }}){% endif %}</p>
                 {% endif %}
+                {% if trace.birdnet_trigger_summary %}
+                  <p><strong>Powód BirdNET:</strong> {{ trace.birdnet_trigger_summary }}</p>
+                {% endif %}
                 {% if trace.birdnet_trigger_labels %}
                   <p><strong>Wyzwalacze YAMNet:</strong> {{ trace.birdnet_trigger_labels|map('translate_label')|join(', ') }}</p>
+                {% endif %}
+                {% if trace.birdnet_lookup_status %}
+                  <p><strong>BirdNET:</strong> {{ trace.birdnet_lookup_status }}{% if trace.birdnet_lookup_reason %} - {{ trace.birdnet_lookup_reason }}{% endif %}</p>
+                {% endif %}
+                {% if trace.birdnet_results %}
+                  <p><strong>Wynik BirdNET:</strong> {{ trace.birdnet_results[0].common_name }}{% if trace.birdnet_results[0].scientific_name %} ({{ trace.birdnet_results[0].scientific_name }}){% endif %}{% if trace.birdnet_results[0].score is not none %} - {{ '%.3f'|format(trace.birdnet_results[0].score) }}{% endif %}</p>
                 {% endif %}
                 {% if trace.resolved_label %}
                   <p><strong>Główna etykieta YAMNet:</strong> {{ translate_label(trace.resolved_label) }}{% if trace.resolved_label_score is not none %} ({{ '%.3f'|format(trace.resolved_label_score) }}){% endif %}</p>
@@ -132,6 +141,34 @@
                         <strong>{{ '%.3f'|format(item.score) }}</strong>
                       </li>
                     {% endfor %}
+                  </ul>
+                </div>
+              {% endif %}
+
+              {% if trace.birdnet_results %}
+                <div class="decision-section">
+                  <p class="label">Wyniki BirdNET</p>
+                  <ul class="plain-list compact-list">
+                    {% for item in trace.birdnet_results %}
+                      <li>
+                        <span>
+                          {{ item.common_name or item.species_label }}
+                          {% if item.scientific_name %}<small>({{ item.scientific_name }})</small>{% endif %}
+                        </span>
+                        <strong>{% if item.score is not none %}{{ '%.3f'|format(item.score) }}{% endif %}</strong>
+                      </li>
+                    {% endfor %}
+                  </ul>
+                </div>
+              {% endif %}
+              {% if trace.birdnet_trigger_labels and not trace.birdnet_results %}
+                <div class="decision-section">
+                  <p class="label">BirdNET bez wyniku</p>
+                  <ul class="plain-list compact-list">
+                    <li>
+                      <span>Wyzwalacze</span>
+                      <strong>{{ trace.birdnet_trigger_labels|map('translate_label')|join(', ') }}</strong>
+                    </li>
                   </ul>
                 </div>
               {% endif %}

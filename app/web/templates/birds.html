@@ -29,7 +29,10 @@
             <tr>
               <td><a href="{{ url_for('event_details', event_id=row.id) }}">#{{ row.id }}</a></td>
               <td>{{ row.started_at }}</td>
-              <td>{{ row.species }}</td>
+              <td>
+                {{ row.species }}
+                <span class="inline-badge">BirdNET</span>
+              </td>
               <td>{{ '%.1f'|format(row.duration_seconds) }} s</td>
               <td>{{ format_dbfs(row.peak_dbfs) }}</td>
               <td>{{ '%.2f'|format(row.confidence) }}</td>

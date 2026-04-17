@@ -12,6 +12,7 @@ CATEGORY_LABELS = {
     "street_background": "Nieokreślony hałas uliczny / tło",
     "speech": "Mowa ludzka",
     "other_detected": "Inny rozpoznany dźwięk",
+    "discarded": "Odrzucone tło",
 }
 
 

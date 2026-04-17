@@ -589,6 +589,37 @@ YAMNET_LABEL_TRANSLATIONS = {
     "Inside, small room": "Wewnątrz, mały pokój",
     "Silence": "Cisza",
     "Animal": "Zwierzę",
+    "Fowl": "Drób",
+    "Chicken, rooster": "Kura, kogut",
+    "Cluck": "Gdaczenie",
+    "Crowing, cock-a-doodle-doo": "Kukuryku",
+    "Turkey": "Indyk",
+    "Gobble": "Gulgotanie",
+    "Duck": "Kaczka",
+    "Quack": "Kwa-kwa",
+    "Goose": "Gęś",
+    "Honk": "Trąbienie gęsi",
+    "Pigeon, dove": "Gołąb, gołębica",
+    "Coo": "Grukanie",
+    "Crow": "Wrona",
+    "Caw": "Kraknięcie",
+    "Owl": "Sowa",
+    "Hoot": "Puhanie",
+    "Dog": "Pies",
+    "Whimper (dog)": "Skowyt psa",
+    "Howl": "Wycie",
+    "Growling": "Warczenie",
+    "Cat": "Kot",
+    "Caterwaul": "Koci wrzask",
+    "Mouse": "Mysz",
+    "Pig": "Świnia",
+    "Oink": "Kwik",
+    "Goat": "Koza",
+    "Bleat": "Beczenie",
+    "Sheep": "Owca",
+    "Horse": "Koń",
+    "Moo": "Muczenie",
+    "Cattle, bovinae": "Bydło",
     "Ambulance (siren)": "Karetka (syrena)",
     "Siren": "Syrena",
     "Civil defense siren": "Syrena alarmowa obrony cywilnej",
@@ -1185,6 +1216,22 @@ def _describe_classifier_decision(decision: dict[str, object]) -> dict[str, obje
         )
         category_scores = [{"category": name, "score": score} for name, score in sorted_scores[:5]]
 
+    birdnet_results_raw = normalized_details.get("birdnet_results")
+    birdnet_results: list[dict[str, object]] = []
+    if isinstance(birdnet_results_raw, list):
+        for item in birdnet_results_raw[:5]:
+            if not isinstance(item, dict):
+                continue
+            score = item.get("score")
+            birdnet_results.append(
+                {
+                    "species_label": str(item.get("species_label") or ""),
+                    "common_name": str(item.get("common_name") or ""),
+                    "scientific_name": str(item.get("scientific_name") or ""),
+                    "score": float(score) if isinstance(score, int | float) else None,
+                }
+            )
+
     return {
         "classifier_name": classifier_name,
         "classifier_label": _translate_classifier_name(classifier_name),
@@ -1210,6 +1257,21 @@ def _describe_classifier_decision(decision: dict[str, object]) -> dict[str, obje
         ]
         if isinstance(normalized_details.get("birdnet_trigger_labels"), list)
         else [],
+        "birdnet_lookup_status": _translate_birdnet_lookup_status(
+            str(normalized_details.get("birdnet_lookup_status"))
+            if normalized_details.get("birdnet_lookup_status")
+            else None
+        ),
+        "birdnet_lookup_reason": (
+            str(normalized_details.get("birdnet_lookup_reason"))
+            if normalized_details.get("birdnet_lookup_reason")
+            else None
+        ),
+        "birdnet_trigger_summary": _summarize_birdnet_triggers(
+            [
+                str(item) for item in normalized_details.get("birdnet_trigger_labels", []) if isinstance(item, str)
+            ]
+        ),
         "resolved_label": str(normalized_details.get("resolved_label")) if normalized_details.get("resolved_label") else None,
         "resolved_label_score": (
             float(normalized_details.get("resolved_label_score"))
@@ -1219,6 +1281,7 @@ def _describe_classifier_decision(decision: dict[str, object]) -> dict[str, obje
         "cache_category_promoted": bool(normalized_details.get("cache_category_promoted")),
         "top_labels": top_labels,
         "category_scores": category_scores,
+        "birdnet_results": birdnet_results,
     }
 
 
@@ -1234,6 +1297,33 @@ def _translate_external_api_name(name: str | None) -> str | None:
     if name == "BirdNET Cloud":
         return "Chmura BirdNET"
     return name
+
+
+def _summarize_birdnet_triggers(labels: list[str]) -> str | None:
+    if not labels:
+        return None
+
+    normalized = {label.casefold() for label in labels}
+    has_bird = any("bird" in label for label in normalized)
+    has_animal = any("animal" in label for label in normalized)
+
+    if has_bird and has_animal:
+        return "BirdNET uruchomiono przez etykietę ptasią i zwierzęcą YAMNet"
+    if has_bird:
+        return "BirdNET uruchomiono przez etykietę ptasią YAMNet"
+    if has_animal:
+        return "BirdNET uruchomiono przez etykietę zwierzęcą YAMNet"
+    return "BirdNET uruchomiono przez etykietę YAMNet"
+
+
+def _translate_birdnet_lookup_status(status: str | None) -> str | None:
+    if not status:
+        return None
+    return {
+        "disabled": "BirdNET nie skonfigurowano",
+        "no_result": "BirdNET bez wyniku",
+        "error": "BirdNET błąd",
+    }.get(status, status)
 
 
 def _format_worker_state(value: str | None) -> str:
@@ -1275,7 +1365,38 @@ def _read_system_status(config: AppConfig) -> dict[str, object]:
         "cpu_temperature_c": _read_cpu_temperature_c(),
         "memory_available_gb": _read_memory_available_gb(),
         "disk_free_gb": _read_disk_free_gb(config.storage.database_path.parent),
+        "birdnet_service": _read_systemd_service_status("birdnet-server"),
+        "birdnet_api_url": config.classifier.birdnet_api_url or None,
     }
+
+
+def _read_systemd_service_status(service_name: str) -> dict[str, str | None]:
+    status = {"active": None, "enabled": None}
+    try:
+        active_result = subprocess.run(
+            ["systemctl", "is-active", service_name],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        status["active"] = active_result.stdout.strip() or active_result.stderr.strip() or None
+    except (OSError, subprocess.SubprocessError):
+        return status
+
+    try:
+        enabled_result = subprocess.run(
+            ["systemctl", "is-enabled", service_name],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        status["enabled"] = enabled_result.stdout.strip() or enabled_result.stderr.strip() or None
+    except (OSError, subprocess.SubprocessError):
+        return status
+
+    return status
 
 
 def _read_system_uptime_seconds() -> float | None:

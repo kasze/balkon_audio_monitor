@@ -17,5 +17,17 @@ cd "${ROOT_DIR}"
 echo "[1/2] Running tests"
 ./scripts/test.sh
 
-echo "[2/2] Deploying"
-./scripts/deploy.sh "${TARGET}" "${REMOTE_DIR}"
+echo "[2/3] Deploying code"
+AUDIO_MONITOR_SKIP_BOOTSTRAP=1 ./scripts/deploy.sh "${TARGET}" "${REMOTE_DIR}"
+
+echo "[3/3] Workspace summary"
+changed_files="$(git status --short | awk '{print $2}')"
+if [ -n "${changed_files}" ]; then
+  changed_count="$(printf '%s\n' "${changed_files}" | sed '/^$/d' | wc -l | tr -d ' ')"
+  echo "  - changed files: ${changed_count}"
+  printf '%s\n' "${changed_files}" | sed '/^$/d' | while IFS= read -r file; do
+    echo "  - ${file}"
+  done
+else
+  echo "  - changed files: 0"
+fi

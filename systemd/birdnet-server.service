@@ -1,0 +1,20 @@
+[Unit]
+Description=BirdNET Analyzer API for BAM
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=kasze
+WorkingDirectory=/opt/audio-monitor/.birdnet/BirdNET-Analyzer
+Environment=PYTHONUNBUFFERED=1
+ExecStartPre=/bin/mkdir -p /opt/audio-monitor/data/birdnet_uploads
+ExecStart=/opt/audio-monitor/.birdnet-venv/bin/python birdnet_analyzer/network/server.py --host 127.0.0.1 --port 8081 --spath /opt/audio-monitor/data/birdnet_uploads --threads 1 --locale pl
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

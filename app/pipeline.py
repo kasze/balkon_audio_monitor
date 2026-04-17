@@ -111,6 +111,13 @@ class AudioPipeline:
     def _persist_event(self, completed) -> None:
         outcome = self.classifier.classify(completed)
         decision = outcome.decision
+        if decision.category == "discarded":
+            LOGGER.info(
+                "Discarded event duration=%.1fs reason=%s",
+                completed.summary.duration_seconds,
+                decision.details.get("resolved_label") if isinstance(decision.details, dict) else "discarded_label",
+            )
+            return
         clip = None
         if self.config.storage.keep_clips:
             estimated_clip_bytes = self.clip_store.estimate_total_size(completed.clip_samples.size)

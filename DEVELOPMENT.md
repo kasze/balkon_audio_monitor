@@ -17,12 +17,18 @@
 3. Sprawdz dashboard i szczegoly eventow.
 4. Dostrajal progi lub heurystyki.
 5. Uruchom `pytest`.
-6. Wypchnij zmiany na Raspberry Pi przez `scripts/deploy.sh`.
+6. Wypchnij zmiany na Raspberry Pi przez `scripts/test_and_deploy.sh`.
 
 ## Deploy na urzadzenie
 
 ```bash
 ./scripts/deploy.sh pi@raspberrypi.local /opt/audio-monitor
+```
+
+## Bootstrap zaleznosci
+
+```bash
+./scripts/bootstrap_remote.sh pi@raspberrypi.local /opt/audio-monitor
 ```
 
 ## Restart uslugi
@@ -42,7 +48,7 @@
 Najprostszy rollback dla MVP:
 
 1. Na laptopie przelacz repo na poprzedni stabilny commit.
-2. Uruchom ponownie `./scripts/deploy.sh pi@raspberrypi.local /opt/audio-monitor`.
+2. Uruchom ponownie `./scripts/bootstrap_remote.sh pi@raspberrypi.local /opt/audio-monitor`.
 3. Zweryfikuj `journalctl` i `GET /health`.
 
 Jesli chcesz rollback bez laptopa:

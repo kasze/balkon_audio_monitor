@@ -142,10 +142,16 @@ Deploy:
 ./scripts/deploy.sh
 ```
 
-Testy i deploy jednym poleceniem:
+Testy i codzienny deploy roboczy:
 
 ```bash
 ./scripts/test_and_deploy.sh
+```
+
+Jeśli potrzebujesz odświeżyć zależności systemowe, Python lub BirdNET:
+
+```bash
+./scripts/bootstrap_remote.sh
 ```
 
 ## Uruchomienie jako usługa
@@ -210,16 +216,39 @@ Endpoint zdrowia:
 
 Opcjonalna integracja działa tylko dla przypadków, gdy YAMNet wykryje klasy ptasie. Wtedy BAM może wysłać próbkę do serwera BirdNET API i zapisać gatunek.
 
-Konfiguracja:
+BAM łączy się z lokalnym serwerem BirdNET po adresie:
 
 ```yaml
 classifier:
-  birdnet_api_url: http://host:port
-  birdnet_timeout_seconds: 15.0
+  birdnet_api_url: http://127.0.0.1:8081
+  birdnet_timeout_seconds: 20.0
   birdnet_min_confidence: 0.20
   birdnet_num_results: 5
   birdnet_locale: pl
 ```
+
+Port `8080` zostaje dla panelu BAM, dlatego BirdNET działa na `8081`.
+
+Instalacja lokalnego serwera BirdNET jest ciężka, bo pobiera BirdNET-Analyzer, TensorFlow i zależności naukowe do osobnego `.birdnet-venv`. Na Raspberry Pi potrzebne jest kilka GB wolnego miejsca. Instalator trzyma też pliki tymczasowe na dysku w katalogu repo, a nie w `/tmp`, bo `/tmp` bywa mały i jest montowany jako `tmpfs`. Żeby włączyć instalację podczas deployu, ustaw lokalnie w `configs/deploy.env`:
+
+```bash
+AUDIO_MONITOR_INSTALL_BIRDNET=1
+```
+
+Potem uruchom:
+
+```bash
+./scripts/deploy.sh
+```
+
+Sprawdzenie usługi na Raspberry Pi:
+
+```bash
+sudo systemctl status birdnet-server
+journalctl -u birdnet-server -n 100 --no-pager
+```
+
+Jeśli instalujesz unit ręcznie, pamiętaj żeby `User=` w `birdnet-server.service` wskazywał istniejącego użytkownika na Raspberry Pi, np. `kasze`, a nie domyślne `pi`.
 
 ## Pliki i katalogi
 
@@ -228,3 +257,4 @@ classifier:
 - `data/db/` baza SQLite
 - `data/clips/` zapisane próbki audio i obrazy widma
 - `systemd/audio-monitor.service` jednostka usługi
+- `systemd/birdnet-server.service` jednostka lokalnego API BirdNET

@@ -11,8 +11,10 @@ from app.classify.service import (
     _extract_bird_trigger_labels,
     compute_audio_signature,
 )
-from app.config import ClassifierConfig
+from app.config import AppConfig, ClassifierConfig, StorageConfig
 from app.models import ClassificationOutcome, ClassifierDecision, CompletedEvent, EventSummary
+from app.pipeline import AudioPipeline, RuntimeStatus
+from app.storage.database import SQLiteRepository
 
 
 class FakeRepository:
@@ -82,7 +84,7 @@ def test_app_classifier_does_not_store_similarity_cache_entries(monkeypatch) -> 
     assert repository.inserted == []
 
 
-def test_extract_bird_trigger_labels_covers_all_bird_yamnet_variants() -> None:
+def test_extract_bird_trigger_labels_covers_birds_and_animals() -> None:
     decision = ClassifierDecision(
         "yamnet_litert",
         "1",
@@ -94,6 +96,9 @@ def test_extract_bird_trigger_labels_covers_all_bird_yamnet_variants() -> None:
             "top_labels": [
                 {"label": "Bird", "mean_score": 0.32, "peak_score": 0.67},
                 {"label": "Bird flight, flapping wings", "mean_score": 0.12, "peak_score": 0.21},
+                {"label": "Animal", "mean_score": 0.15, "peak_score": 0.22},
+                {"label": "Turkey", "mean_score": 0.11, "peak_score": 0.19},
+                {"label": "Chicken, rooster", "mean_score": 0.09, "peak_score": 0.18},
                 {"label": "Speech", "mean_score": 0.05, "peak_score": 0.08},
             ],
         },
@@ -105,6 +110,9 @@ def test_extract_bird_trigger_labels_covers_all_bird_yamnet_variants() -> None:
         "Bird vocalization, bird call, bird song",
         "Bird",
         "Bird flight, flapping wings",
+        "Animal",
+        "Turkey",
+        "Chicken, rooster",
     ]
 
 
@@ -218,3 +226,50 @@ def test_yamnet_mapping_uses_raw_yamnet_label_for_strong_non_domain_label() -> N
     assert resolved_label == "Speech"
     assert resolved_label_score == confidence
     assert max(category_scores.values()) == 0.0
+
+
+def test_yamnet_mapping_discards_background_like_labels() -> None:
+    classifier = YAMNetClassifier(ClassifierConfig())
+    output = YAMNetModelOutput(
+        mean_scores={"White noise": 0.42, "Silence": 0.11, "Speech": 0.07},
+        peak_scores={"White noise": 0.91, "Silence": 0.24, "Speech": 0.15},
+        top_labels=[],
+    )
+
+    category, confidence, category_scores, resolved_label, resolved_label_score = classifier._map_to_domain_category(
+        output
+    )
+
+    assert category == "discarded"
+    assert confidence > 0.70
+    assert resolved_label == "White noise"
+    assert resolved_label_score == confidence
+    assert category_scores["street_background"] == 0.0
+
+
+def test_pipeline_skips_discarded_events(tmp_path) -> None:
+    database_path = tmp_path / "audio_monitor.sqlite3"
+    repository = SQLiteRepository(database_path)
+    repository.initialize()
+    config = AppConfig(base_dir=tmp_path, storage=StorageConfig(database_path=database_path, clip_dir=tmp_path / "clips"))
+    pipeline = AudioPipeline(config, repository, RuntimeStatus())
+
+    class FakeClassifier:
+        def classify(self, _event):
+            return ClassificationOutcome(
+                decision=ClassifierDecision(
+                    "yamnet_litert",
+                    "1",
+                    "discarded",
+                    0.91,
+                    {"resolved_label": "White noise"},
+                )
+            )
+
+        def remember(self, _outcome, _event_id):
+            raise AssertionError("discarded events must not be remembered")
+
+    pipeline.classifier = FakeClassifier()  # type: ignore[assignment]
+    pipeline._persist_event(make_event())
+
+    assert repository.recent_events_count() == 0
