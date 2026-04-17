@@ -1257,6 +1257,13 @@ def _describe_classifier_decision(decision: dict[str, object]) -> dict[str, obje
         ]
         if isinstance(normalized_details.get("birdnet_trigger_labels"), list)
         else [],
+        "birdnet_trigger_labels_translated": [
+            _translate_label(str(item))
+            for item in normalized_details.get("birdnet_trigger_labels", [])
+            if isinstance(item, str)
+        ]
+        if isinstance(normalized_details.get("birdnet_trigger_labels"), list)
+        else [],
         "birdnet_lookup_status": _translate_birdnet_lookup_status(
             str(normalized_details.get("birdnet_lookup_status"))
             if normalized_details.get("birdnet_lookup_status")
@@ -1359,14 +1366,15 @@ def _load_manual_label_options(class_map_path: Path) -> list[dict[str, str]]:
 
 
 def _read_system_status(config: AppConfig) -> dict[str, object]:
+    birdnet_api_url = config.classifier.birdnet_api_url.strip()
     return {
         "uptime_seconds": _read_system_uptime_seconds(),
         "cpu_percent": _read_cpu_load_percent(),
         "cpu_temperature_c": _read_cpu_temperature_c(),
         "memory_available_gb": _read_memory_available_gb(),
         "disk_free_gb": _read_disk_free_gb(config.storage.database_path.parent),
-        "birdnet_service": _read_systemd_service_status("birdnet-server"),
-        "birdnet_api_url": config.classifier.birdnet_api_url or None,
+        "birdnet_service": _read_systemd_service_status("birdnet-server") if birdnet_api_url else None,
+        "birdnet_api_url": birdnet_api_url or None,
     }
 
 

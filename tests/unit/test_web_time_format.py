@@ -222,7 +222,7 @@ def test_read_memory_and_disk_and_compose_system_status(
     assert status["cpu_temperature_c"] == 52.0
     assert status["memory_available_gb"] == 1.0
     assert status["disk_free_gb"] == 7.0
-    assert status["birdnet_service"] == {"active": None, "enabled": None}
+    assert status["birdnet_service"] is None
 
 
 def test_read_systemd_service_status(monkeypatch: pytest.MonkeyPatch) -> None:

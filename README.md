@@ -70,9 +70,6 @@ Najważniejsze pola:
 - `storage.database_path`
 - `storage.clip_dir`
 - `web.port`
-- `classifier.birdnet_api_url`
-  - opcjonalne
-  - jeśli ustawione, BAM wyśle próbkę do BirdNET dla klas ptasich wykrytych przez YAMNet
 
 ## Sprawdzenie audio
 
@@ -148,10 +145,16 @@ Testy i codzienny deploy roboczy:
 ./scripts/test_and_deploy.sh
 ```
 
-Jeśli potrzebujesz odświeżyć zależności systemowe, Python lub BirdNET:
+Jeśli potrzebujesz odświeżyć zależności systemowe lub Python:
 
 ```bash
 ./scripts/bootstrap_remote.sh
+```
+
+Jeśli masz jeszcze aktywny lokalny BirdNET i chcesz go wyłączyć:
+
+```bash
+./scripts/disable_birdnet.sh
 ```
 
 ## Uruchomienie jako usługa
@@ -212,42 +215,6 @@ Endpoint zdrowia:
 /health
 ```
 
-## BirdNET
-
-Opcjonalna integracja działa tylko dla przypadków, gdy YAMNet wykryje klasy ptasie. Wtedy BAM może wysłać próbkę do serwera BirdNET API i zapisać gatunek.
-
-BAM łączy się z lokalnym serwerem BirdNET po adresie:
-
-```yaml
-classifier:
-  birdnet_api_url: http://127.0.0.1:8081
-  birdnet_timeout_seconds: 20.0
-  birdnet_min_confidence: 0.20
-  birdnet_num_results: 5
-  birdnet_locale: pl
-```
-
-Port `8080` zostaje dla panelu BAM, dlatego BirdNET działa na `8081`.
-
-Instalacja lokalnego serwera BirdNET jest ciężka, bo pobiera BirdNET-Analyzer, TensorFlow i zależności naukowe do osobnego `.birdnet-venv`. Na Raspberry Pi potrzebne jest kilka GB wolnego miejsca. Instalator trzyma też pliki tymczasowe na dysku w katalogu repo, a nie w `/tmp`, bo `/tmp` bywa mały i jest montowany jako `tmpfs`. Żeby włączyć instalację podczas deployu, ustaw lokalnie w `configs/deploy.env`:
-
-```bash
-AUDIO_MONITOR_INSTALL_BIRDNET=1
-```
-
-Potem uruchom:
-
-```bash
-./scripts/deploy.sh
-```
-
-Sprawdzenie usługi na Raspberry Pi:
-
-```bash
-sudo systemctl status birdnet-server
-journalctl -u birdnet-server -n 100 --no-pager
-```
-
 ## Pliki i katalogi
 
 - `configs/config.yaml` lokalna konfiguracja aplikacji
@@ -255,4 +222,3 @@ journalctl -u birdnet-server -n 100 --no-pager
 - `data/db/` baza SQLite
 - `data/clips/` zapisane próbki audio i obrazy widma
 - `systemd/audio-monitor.service` jednostka usługi
-- `systemd/birdnet-server.service` jednostka lokalnego API BirdNET

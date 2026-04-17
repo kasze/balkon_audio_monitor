@@ -39,7 +39,7 @@ classifier:
   yamnet_max_windows: 24
   yamnet_min_category_score: 0.08
   yamnet_top_k: 8
-  birdnet_api_url: http://127.0.0.1:8081
+  birdnet_api_url: ""
   birdnet_timeout_seconds: 20.0
   birdnet_min_confidence: 0.20
   birdnet_num_results: 5

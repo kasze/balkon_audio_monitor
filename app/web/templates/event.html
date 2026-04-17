@@ -89,7 +89,7 @@
                   <p><strong>Powód BirdNET:</strong> {{ trace.birdnet_trigger_summary }}</p>
                 {% endif %}
                 {% if trace.birdnet_trigger_labels %}
-                  <p><strong>Wyzwalacze YAMNet:</strong> {{ trace.birdnet_trigger_labels|map('translate_label')|join(', ') }}</p>
+                  <p><strong>Wyzwalacze YAMNet:</strong> {{ trace.birdnet_trigger_labels_translated|join(', ') }}</p>
                 {% endif %}
                 {% if trace.birdnet_lookup_status %}
                   <p><strong>BirdNET:</strong> {{ trace.birdnet_lookup_status }}{% if trace.birdnet_lookup_reason %} - {{ trace.birdnet_lookup_reason }}{% endif %}</p>
@@ -167,7 +167,7 @@
                   <ul class="plain-list compact-list">
                     <li>
                       <span>Wyzwalacze</span>
-                      <strong>{{ trace.birdnet_trigger_labels|map('translate_label')|join(', ') }}</strong>
+                      <strong>{{ trace.birdnet_trigger_labels_translated|join(', ') }}</strong>
                     </li>
                   </ul>
                 </div>

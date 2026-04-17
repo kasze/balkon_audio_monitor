@@ -31,18 +31,6 @@
 ./scripts/bootstrap_remote.sh pi@raspberrypi.local /opt/audio-monitor
 ```
 
-## Restart uslugi
-
-```bash
-./scripts/restart_service.sh pi@raspberrypi.local
-```
-
-## Podglad logow
-
-```bash
-./scripts/logs.sh pi@raspberrypi.local
-```
-
 ## Rollback
 
 Najprostszy rollback dla MVP:
