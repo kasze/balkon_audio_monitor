@@ -194,6 +194,26 @@ def test_event_details_and_lists_prefer_clip_duration_over_event_duration(tmp_pa
 def test_dashboard_shows_live_audio_player(tmp_path: Path) -> None:
     repository = SQLiteRepository(tmp_path / "audio_monitor.sqlite3")
     repository.initialize()
+    now = datetime.now().astimezone().replace(microsecond=0)
+    repository.insert_noise_interval(
+        NoiseInterval(
+            source_name="test",
+            started_at=now,
+            ended_at=now + timedelta(minutes=1),
+            avg_rms=0.1,
+            avg_dbfs=-30.0,
+            max_dbfs=-10.0,
+            avg_centroid_hz=500.0,
+            low_band_ratio=0.3,
+            mid_band_ratio=0.4,
+            high_band_ratio=0.3,
+        )
+    )
+    repository.insert_event(
+        _build_event("street_background", now),
+        ClassifierDecision("yamnet_litert", "1", "street_background", 0.7, {}),
+        None,
+    )
     buffer = LiveAudioBuffer(sample_rate=16_000, max_seconds=5.0)
     buffer.append(datetime.now().astimezone(), np.zeros(16_000, dtype=np.float32), 1.0)
 
@@ -216,6 +236,7 @@ def test_dashboard_shows_live_audio_player(tmp_path: Path) -> None:
     assert "Panel" in html
     assert "Live" in html
     assert "Ustawienia" in html
+    assert 'data-labels=' in html
     assert 'data-live-nav-toggle' in html
     assert 'data-live-control hidden' in html
     assert "Stop" in html

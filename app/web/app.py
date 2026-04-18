@@ -670,7 +670,10 @@ def create_app(
             bucket_mode=range_state["bucket_mode"],
         )
         recent_events = repository.list_events_range(category=None, started_at=None, ended_at=None, limit=20)
-        chart = _build_chart(dashboard["ten_minute"], label_slice=range_state["label_slice"])
+        chart = _build_chart(
+            dashboard["ten_minute"],
+            period=range_state["period"],
+        )
         return render_template(
             "index.html",
             range_state=range_state,
@@ -843,10 +846,14 @@ def create_app(
     return app
 
 
-def _build_chart(rows: list[dict[str, object]], label_slice: slice = slice(11, 16)) -> dict[str, object] | None:
+def _build_chart(
+    rows: list[dict[str, object]],
+    *,
+    period: str,
+) -> dict[str, object] | None:
     if not rows:
         return None
-    labels = [str(row["bucket_start"])[label_slice] for row in rows]
+    labels = [_format_chart_bucket_label(str(row["bucket_start"]), period) for row in rows]
     values = [float(row["avg_dbfs"]) for row in rows]
     min_value = min(values)
     max_value = max(values)
@@ -889,7 +896,6 @@ def _resolve_range_state(args) -> dict[str, object]:
         "previous_date": previous_date.isoformat(),
         "next_date": next_date.isoformat(),
         "bucket_mode": bucket_mode,
-        "label_slice": label_slice,
     }
 
 
@@ -939,6 +945,19 @@ def _bucket_mode_for_period(period: str) -> tuple[str, slice]:
     if period == "month":
         return "six_hour", slice(5, 13)
     return "ten_minute", slice(11, 16)
+
+
+def _format_chart_bucket_label(bucket_start: str, period: str) -> str:
+    try:
+        timestamp = datetime.fromisoformat(bucket_start).astimezone()
+    except ValueError:
+        return bucket_start
+
+    if period == "year":
+        return timestamp.strftime("%Y-%m")
+    if period in {"week", "month"}:
+        return timestamp.strftime("%Y-%m-%d %H:%M")
+    return timestamp.strftime("%H:%M")
 
 
 def _format_local_timestamp(value: str | None) -> str:

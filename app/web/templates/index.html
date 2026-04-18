@@ -185,7 +185,7 @@
 
       const formatDb = (value, decimals = 1, offsetDb = 0) => `${normalizeDb(value, decimals, offsetDb).toFixed(decimals)} dB`;
 
-      const formatTooltip = (label, value) => `${String(label).slice(0, 5)} • ${formatDb(value)}`;
+      const formatTooltip = (label, value) => `${String(label)} • ${formatDb(value)}`;
 
       const positionForIndex = (index, count, plotWidth, paddingLeft) =>
         paddingLeft + (plotWidth / Math.max(count - 1, 1)) * index;

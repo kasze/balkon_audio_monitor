@@ -12,6 +12,7 @@ import pytest
 from app.config import AppConfig, StorageConfig
 from app.web.app import (
     _describe_classifier_decision,
+    _format_chart_bucket_label,
     _format_dbfs,
     _format_local_timestamp,
     _format_uptime_seconds,
@@ -63,6 +64,12 @@ def test_format_dbfs_normalizes_negative_zero() -> None:
 
 def test_format_dbfs_applies_offset() -> None:
     assert _format_dbfs(-12.0, offset_db=100.0) == "88.0 dB"
+
+
+def test_format_chart_bucket_label_uses_full_timestamp_for_week_and_month() -> None:
+    assert _format_chart_bucket_label("2026-04-18 12:30:00", "week") == "2026-04-18 12:30"
+    assert _format_chart_bucket_label("2026-04-18 12:30:00", "month") == "2026-04-18 12:30"
+    assert _format_chart_bucket_label("2026-04-18 12:30:00", "day") == "12:30"
 
 
 def test_format_uptime_returns_human_readable_duration() -> None:
