@@ -636,7 +636,7 @@ def create_app(
             "live_audio_available": live_audio_buffer is not None,
             "manual_label_options": current_manual_label_options(),
             "nav_links": [
-                {"href": url_for("index"), "label": "Panel"},
+                {"href": f"{url_for('index')}#recent-events", "label": "Ostatnie zdarzenia", "action": "recent"},
                 {"href": url_for("sleep_health"), "label": "Zdrowie"},
                 {"href": url_for("settings"), "label": "Ustawienia"},
                 {"action": "live", "label": "Live"},

@@ -42,7 +42,7 @@
     <article class="card">
       <h3>Zdarzenia wg kategorii</h3>
       {% if dashboard.categories %}
-        <ul class="plain-list plain-list-two-col">
+        <ul class="plain-list plain-list-three-col">
           {% for row in dashboard.categories %}
             <li>
               <span><a href="{{ url_for('category_events', category=row.category, period=range_state.period, date=range_state.date) }}">{{ translate_label(row.category) }}</a></span>
@@ -71,7 +71,7 @@
     </details>
   </section>
 
-  <section class="card">
+  <section class="card" id="recent-events">
     <h3>Ostatnie 20 zdarzeń</h3>
     {% if recent_events %}
       <table class="events-table">

@@ -13,35 +13,24 @@
         <h1><a href="{{ url_for('index') }}">BAM</a></h1>
         <nav class="page-nav">
           {% for link in nav_links %}
-            {% if link.action == 'live' %}
+            {% if link.action == 'recent' %}
+              <a href="{{ link.href }}">{{ link.label }}</a>
+            {% elif link.action == 'live' %}
               <button
                 type="button"
                 class="page-nav-live"
                 data-live-nav-toggle
                 {% if live_audio_available %}aria-pressed="false"{% else %}disabled aria-disabled="true"{% endif %}
               >
-                {{ link.label }}
+                <span class="page-nav-live-label" data-live-label>{{ link.label }}</span>
+                <span class="page-nav-live-time" data-live-time hidden>00:00</span>
               </button>
             {% else %}
               <a href="{{ link.href }}">{{ link.label }}</a>
             {% endif %}
           {% endfor %}
         </nav>
-        <div class="header-live-box" data-live-control hidden>
-          <div class="header-live-box-inner">
-            <button
-              type="button"
-              class="live-stop"
-              data-live-toggle
-              data-live-src="{{ url_for('live_audio_stream') }}?seconds=12"
-              aria-pressed="false"
-            >
-              Stop
-            </button>
-            <span class="live-time" data-live-time>00:00</span>
-          </div>
-          <audio class="live-audio-player" preload="none" hidden></audio>
-        </div>
+        <audio class="live-audio-player" preload="none" hidden></audio>
       </div>
       <div class="status-card">
         <span class="status-pill {{ status.worker_state if status and status.worker_state else 'idle' }}">
@@ -62,13 +51,12 @@
     </main>
     <script>
       (() => {
-        const liveControl = document.querySelector("[data-live-control]");
         const liveNavToggle = document.querySelector("[data-live-nav-toggle]");
-        if (liveControl) {
-          const toggle = liveControl.querySelector("[data-live-toggle]");
-          const player = liveControl.querySelector("audio");
-          const timer = liveControl.querySelector("[data-live-time]");
-          if (toggle && player && timer) {
+        const player = document.querySelector(".live-audio-player");
+        if (liveNavToggle && player) {
+          const label = liveNavToggle.querySelector("[data-live-label]");
+          const timer = liveNavToggle.querySelector("[data-live-time]");
+          if (label && timer) {
             let startedAt = 0;
             let timerHandle = null;
             let stopping = false;
@@ -89,22 +77,20 @@
             };
 
             const setActive = (active) => {
-              liveControl.hidden = !active;
-              if (liveNavToggle) {
-                liveNavToggle.classList.toggle("active", active);
-                liveNavToggle.setAttribute("aria-pressed", active ? "true" : "false");
-              }
-              toggle.setAttribute("aria-pressed", active ? "true" : "false");
+              liveNavToggle.classList.toggle("active", active);
+              liveNavToggle.setAttribute("aria-pressed", active ? "true" : "false");
+              label.textContent = active ? "Stop" : "Live";
+              timer.hidden = !active;
               timer.textContent = active ? formatElapsed(Date.now() - startedAt) : "00:00";
             };
 
             const activate = async () => {
-              const source = new URL(toggle.dataset.liveSrc, window.location.origin);
+              const source = new URL("/api/live-audio-stream?seconds=12", window.location.origin);
               source.searchParams.set("_", Date.now().toString());
               player.src = source.toString();
-              liveControl.hidden = false;
               startedAt = Date.now();
               timer.textContent = "00:00";
+              timer.hidden = false;
               stopTimer();
               timerHandle = window.setInterval(() => {
                 timer.textContent = formatElapsed(Date.now() - startedAt);
@@ -123,26 +109,22 @@
               player.pause();
               player.removeAttribute("src");
               player.load();
-              liveControl.hidden = true;
               timer.textContent = "00:00";
               setActive(false);
               stopping = false;
             };
 
-            toggle.addEventListener("click", () => {
+            liveNavToggle.addEventListener("click", () => {
               if (player.paused) {
                 void activate();
               } else {
                 deactivate();
               }
             });
-            if (liveNavToggle) {
-              liveNavToggle.addEventListener("click", () => toggle.click());
-            }
             player.addEventListener("ended", deactivate);
             player.addEventListener("pause", () => {
               if (stopping) return;
-              if (!player.ended && !player.seeking && !liveControl.hidden) {
+              if (!player.ended && !player.seeking && liveNavToggle.classList.contains("active")) {
                 deactivate();
               }
             });

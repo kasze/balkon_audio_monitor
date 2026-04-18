@@ -280,7 +280,8 @@ def test_dashboard_shows_live_audio_player(tmp_path: Path) -> None:
     assert "Ustawienia" in html
     assert 'data-labels=' in html
     assert 'data-live-nav-toggle' in html
-    assert 'data-live-control hidden' in html
+    assert 'header-live-box' not in html
+    assert 'data-live-time hidden' in html
     assert "Stop" in html
     assert "00:00" in html
 
