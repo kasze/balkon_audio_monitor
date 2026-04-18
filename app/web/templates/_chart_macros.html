@@ -9,6 +9,7 @@
           data-values='{{ chart["values"]|tojson }}'
           data-min='{{ chart["min_value"] }}'
           data-max='{{ chart["max_value"] }}'
+          data-offset='{{ db_offset_db }}'
           aria-label="{{ aria_label }}"
         ></canvas>
         <div class="chart-tooltip" hidden></div>

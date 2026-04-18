@@ -177,14 +177,15 @@
         });
       };
 
-      const normalizeDbfs = (value, decimals = 1) => {
+      const normalizeDb = (value, decimals = 1, offsetDb = 0) => {
+        const shifted = Number(value) + Number(offsetDb);
         const threshold = 0.5 * (10 ** (-decimals));
-        return Math.abs(value) < threshold ? 0 : value;
+        return Math.abs(shifted) < threshold ? 0 : shifted;
       };
 
-      const formatDbfs = (value, decimals = 1) => `${normalizeDbfs(value, decimals).toFixed(decimals)} dBFS`;
+      const formatDb = (value, decimals = 1, offsetDb = 0) => `${normalizeDb(value, decimals, offsetDb).toFixed(decimals)} dB`;
 
-      const formatTooltip = (label, value) => `${String(label).slice(0, 5)} • ${formatDbfs(value)}`;
+      const formatTooltip = (label, value) => `${String(label).slice(0, 5)} • ${formatDb(value)}`;
 
       const positionForIndex = (index, count, plotWidth, paddingLeft) =>
         paddingLeft + (plotWidth / Math.max(count - 1, 1)) * index;
@@ -211,10 +212,23 @@
         const padding = { top: 16, right: 72, bottom: 40, left: 12 };
         const plotWidth = width - padding.left - padding.right;
         const plotHeight = height - padding.top - padding.bottom;
+        const offsetDb = Number(canvas.dataset.offset || 0);
         const minValue = Number(canvas.dataset.min || Math.min(...values));
         const maxValue = Number(canvas.dataset.max || Math.max(...values));
         const span = Math.max(maxValue - minValue, 1);
-        chartState.set(canvas, { labels, values, minValue, maxValue, span, padding, plotWidth, plotHeight, width, height });
+        chartState.set(canvas, {
+          labels,
+          values,
+          minValue,
+          maxValue,
+          span,
+          padding,
+          plotWidth,
+          plotHeight,
+          width,
+          height,
+          offsetDb,
+        });
 
         ctx.strokeStyle = "rgba(125, 148, 192, 0.22)";
         ctx.lineWidth = 1;
@@ -279,8 +293,8 @@
         ctx.font = '600 12px "SF Pro Text", "SF Pro Display", "Helvetica Neue", "Segoe UI", sans-serif';
         ctx.textAlign = "left";
         ctx.textBaseline = "middle";
-        ctx.fillText(formatDbfs(maxValue), width - padding.right + 10, padding.top + 2);
-        ctx.fillText(formatDbfs(minValue), width - padding.right + 10, padding.top + plotHeight - 2);
+        ctx.fillText(formatDb(maxValue, 1, offsetDb), width - padding.right + 10, padding.top + 2);
+        ctx.fillText(formatDb(minValue, 1, offsetDb), width - padding.right + 10, padding.top + plotHeight - 2);
       };
 
       const showTooltip = (canvas, event) => {
@@ -301,7 +315,7 @@
         const y = state.padding.top + state.plotHeight - normalized * state.plotHeight;
 
         tooltip.hidden = false;
-        tooltip.textContent = formatTooltip(state.labels[index], value);
+        tooltip.textContent = formatTooltip(state.labels[index], value + state.offsetDb);
         tooltip.style.left = `${x}px`;
         tooltip.style.top = `${Math.max(y - 14, 8)}px`;
       };

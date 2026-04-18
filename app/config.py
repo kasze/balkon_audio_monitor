@@ -22,6 +22,7 @@ class AudioConfig:
     arecord_binary: str = "arecord"
     arecord_device: str | None = None
     retry_backoff_seconds: float = 5.0
+    db_offset_db: float = 100.0
 
 
 @dataclass(slots=True, frozen=True)
@@ -209,6 +210,7 @@ def save_config(config: AppConfig, path: str | Path | None = None) -> Path:
             "arecord_binary": config.audio.arecord_binary,
             "arecord_device": config.audio.arecord_device,
             "retry_backoff_seconds": float(config.audio.retry_backoff_seconds),
+            "db_offset_db": float(config.audio.db_offset_db),
         },
         "detection": {
             "initial_noise_floor_dbfs": float(config.detection.initial_noise_floor_dbfs),

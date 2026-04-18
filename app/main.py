@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import argparse
 import logging
+from dataclasses import replace
 from pathlib import Path
 
 from app.audio_devices import select_capture_device
 from app.capture.base import AudioCaptureError
 from app.capture.live import LiveAudioSource
 from app.capture.wav import WavFileSource
-from app.config import AppConfig, load_config
+from app.config import AppConfig, StorageConfig, load_config, save_config
 from app.logging_setup import configure_logging
 from app.pipeline import AudioPipeline, RuntimeStatus
 from app.service import MonitorServiceRunner, probe_audio_input, run_web_server
@@ -26,6 +27,7 @@ def parse_args() -> argparse.Namespace:
     subparsers.add_parser("service", help="Run live capture and web panel in one process.")
     subparsers.add_parser("web", help="Run only the web panel.")
     subparsers.add_parser("run-live", help="Run only live capture pipeline.")
+    subparsers.add_parser("init-config", help="Create a local config and auto-detect the audio device.")
     subparsers.add_parser("check-audio", help="Probe ALSA input with a short capture.")
     subparsers.add_parser("detect-audio", help="List ALSA capture devices and show the selected input.")
 
@@ -55,6 +57,9 @@ def main() -> int:
         if args.command == "init-db":
             LOGGER.info("Database initialized at %s", config.storage.database_path)
             return 0
+
+        if args.command == "init-config":
+            return init_config(config)
 
         if args.command == "web":
             run_web_server(repository, status, config, pipeline.live_audio_buffer)
@@ -112,6 +117,54 @@ def run_live_capture(config: AppConfig, pipeline: AudioPipeline) -> int:
         pipeline.process_stream(source.frames())
     finally:
         source.close()
+    return 0
+
+
+def init_config(config: AppConfig) -> int:
+    target_path = config.config_path or (config.base_dir / "configs/config.yaml")
+    if target_path.exists():
+        print(f"Config already exists at {target_path}")
+        return 0
+
+    storage = StorageConfig(
+        database_path=(config.base_dir / "data/db/audio_monitor.sqlite3").resolve(),
+        clip_dir=(config.base_dir / "data/clips").resolve(),
+        keep_clips=config.storage.keep_clips,
+        clip_max_megabytes=config.storage.clip_max_megabytes,
+        clip_max_age_days=config.storage.clip_max_age_days,
+        min_free_disk_megabytes=config.storage.min_free_disk_megabytes,
+    )
+    selected_description = None
+    audio = config.audio
+    try:
+        selection = select_capture_device(
+            arecord_binary=config.audio.arecord_binary,
+            configured_device=config.audio.arecord_device,
+        )
+        selected_description = selection.description
+        if config.audio.arecord_device is None and selection.device_spec:
+            audio = replace(audio, arecord_device=selection.device_spec)
+    except AudioCaptureError as exc:
+        LOGGER.warning("Audio device auto-detection failed: %s", exc)
+
+    bootstrap_config = AppConfig(
+        base_dir=config.base_dir,
+        audio=audio,
+        detection=config.detection,
+        aggregation=config.aggregation,
+        classifier=config.classifier,
+        storage=storage,
+        web=config.web,
+        logging=config.logging,
+        config_path=target_path,
+    )
+
+    saved_path = save_config(bootstrap_config, target_path)
+    print(f"Created config at {saved_path}")
+    if selected_description:
+        print(f"Selected capture device: {selected_description}")
+    else:
+        print("Audio device remains auto-detected at runtime.")
     return 0
 
 

@@ -382,6 +382,7 @@ def test_settings_page_renders_and_saves_config(tmp_path: Path) -> None:
             "audio.arecord_device": "",
             "audio.sample_rate": "16000",
             "audio.channels": "1",
+            "audio.db_offset_db": "100.0",
             "audio.frame_duration_seconds": "0.5",
             "audio.retry_backoff_seconds": "5",
             "detection.initial_noise_floor_dbfs": "-58",
@@ -423,3 +424,4 @@ def test_settings_page_renders_and_saves_config(tmp_path: Path) -> None:
     assert saved.detection.activation_margin_db == 9.0
     assert saved.detection.min_event_dbfs == -47.0
     assert saved.aggregation.max_event_seconds == 15.0
+    assert saved.audio.db_offset_db == 100.0

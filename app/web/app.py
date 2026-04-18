@@ -4,6 +4,7 @@ import csv
 import os
 import shutil
 import subprocess
+from functools import lru_cache
 from io import BytesIO
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -159,6 +160,16 @@ SETTINGS_SECTIONS = (
                     {"value": "1", "label": "Mono"},
                     {"value": "2", "label": "Stereo"},
                 ],
+            },
+            {
+                "name": "audio.db_offset_db",
+                "label": "Korekta dB",
+                "kind": "range",
+                "description": "Stały offset dodawany do prezentacji. Silnik dalej pracuje na dBFS.",
+                "min": 60.0,
+                "max": 140.0,
+                "step": 0.5,
+                "unit": "dB",
             },
             {
                 "name": "audio.frame_duration_seconds",
@@ -607,10 +618,17 @@ def create_app(
         return config_state["value"]
 
     def current_manual_label_options() -> list[dict[str, str]]:
-        return _load_manual_label_options(current_config().classifier.yamnet_class_map_path)
+        class_map_path = current_config().classifier.yamnet_class_map_path
+        cache_key = _manual_label_options_cache_key(class_map_path)
+        return [
+            {"value": value, "label": label}
+            for value, label in _manual_label_options_for_path(*cache_key)
+        ]
 
     def current_manual_label_values() -> set[str]:
-        return {item["value"] for item in current_manual_label_options()}
+        class_map_path = current_config().classifier.yamnet_class_map_path
+        cache_key = _manual_label_options_cache_key(class_map_path)
+        return {value for value, _label in _manual_label_options_for_path(*cache_key)}
 
     @app.context_processor
     def inject_helpers() -> dict[str, object]:
@@ -618,7 +636,12 @@ def create_app(
         return {
             "category_labels": CATEGORY_LABELS,
             "describe_classifier_decision": _describe_classifier_decision,
-            "format_dbfs": _format_dbfs,
+            "format_dbfs": lambda value, decimals=1: _format_dbfs(
+                value,
+                decimals=decimals,
+                offset_db=cfg.audio.db_offset_db,
+            ),
+            "db_offset_db": cfg.audio.db_offset_db,
             "format_local_timestamp": _format_local_timestamp,
             "format_uptime_seconds": _format_uptime_seconds,
             "format_worker_state": _format_worker_state,
@@ -661,6 +684,7 @@ def create_app(
     @app.get("/api/events")
     def range_events_api():
         range_state = _resolve_range_state(request.args)
+        offset_db = current_config().audio.db_offset_db
         events = repository.list_events_range(
             category=None,
             started_at=range_state["started_at"],
@@ -676,7 +700,7 @@ def create_app(
                         "category": row["category"],
                         "category_label": _translate_label(str(row["category"])),
                         "duration_label": f"{float(row['duration_seconds']):.1f} s",
-                        "peak_label": _format_dbfs(row["peak_dbfs"]),
+                        "peak_label": _format_dbfs(row["peak_dbfs"], offset_db=offset_db),
                         "confidence_label": f"{float(row['confidence']):.2f}",
                         "event_url": url_for("event_details", event_id=row["id"]),
                         "category_url": url_for(
@@ -948,14 +972,14 @@ def _format_uptime_seconds(value: float | int | None) -> str:
     return " ".join(parts)
 
 
-def _format_dbfs(value: float | int | None, decimals: int = 1) -> str:
+def _format_dbfs(value: float | int | None, decimals: int = 1, offset_db: float = 0.0) -> str:
     if value is None:
         return "brak danych"
-    normalized = float(value)
+    normalized = float(value) + float(offset_db)
     threshold = 0.5 * (10 ** (-decimals))
     if abs(normalized) < threshold:
         normalized = 0.0
-    return f"{normalized:.{decimals}f} dBFS"
+    return f"{normalized:.{decimals}f} dB"
 
 
 def _capture_device_options(config: AppConfig) -> list[dict[str, str]]:
@@ -983,6 +1007,7 @@ def _settings_values(config: AppConfig) -> dict[str, object]:
         "audio.arecord_device": config.audio.arecord_device or "",
         "audio.sample_rate": config.audio.sample_rate,
         "audio.channels": config.audio.channels,
+        "audio.db_offset_db": config.audio.db_offset_db,
         "audio.frame_duration_seconds": config.audio.frame_duration_seconds,
         "audio.retry_backoff_seconds": config.audio.retry_backoff_seconds,
         "detection.initial_noise_floor_dbfs": config.detection.initial_noise_floor_dbfs,
@@ -1069,6 +1094,7 @@ def _build_config_from_form(config: AppConfig, form) -> AppConfig:
         audio=AudioConfig(
             sample_rate=_int_from_form(form, "audio.sample_rate"),
             channels=_int_from_form(form, "audio.channels"),
+            db_offset_db=_float_from_form(form, "audio.db_offset_db"),
             frame_duration_seconds=_float_from_form(form, "audio.frame_duration_seconds"),
             arecord_binary=config.audio.arecord_binary,
             arecord_device=arecord_device,
@@ -1235,10 +1261,19 @@ def _translate_label(value: str | None) -> str:
     return value
 
 
-def _load_manual_label_options(class_map_path: Path) -> list[dict[str, str]]:
+def _manual_label_options_cache_key(class_map_path: Path) -> tuple[str, int, int]:
+    try:
+        stat_result = class_map_path.stat()
+        return (str(class_map_path.resolve()), stat_result.st_mtime_ns, stat_result.st_size)
+    except OSError:
+        return (str(class_map_path.resolve()), 0, 0)
+
+
+@lru_cache(maxsize=8)
+def _manual_label_options_for_path(class_map_path: str, _mtime_ns: int, _size: int) -> tuple[tuple[str, str], ...]:
     values: dict[str, str] = {key: label for key, label in CATEGORY_LABELS.items()}
     try:
-        with class_map_path.open("r", encoding="utf-8") as handle:
+        with Path(class_map_path).open("r", encoding="utf-8") as handle:
             reader = csv.DictReader(handle)
             for row in reader:
                 raw_label = (row.get("display_name") or "").strip()
@@ -1248,7 +1283,7 @@ def _load_manual_label_options(class_map_path: Path) -> list[dict[str, str]]:
         pass
 
     ordered = sorted(values.items(), key=lambda item: item[1].casefold())
-    return [{"value": value, "label": label} for value, label in ordered]
+    return tuple((value, label) for value, label in ordered)
 
 
 def _read_system_status(config: AppConfig) -> dict[str, object]:

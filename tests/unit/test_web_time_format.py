@@ -56,9 +56,13 @@ def test_format_local_timestamp_returns_original_on_parse_error() -> None:
 
 
 def test_format_dbfs_normalizes_negative_zero() -> None:
-    assert _format_dbfs(-0.00003) == "0.0 dBFS"
-    assert _format_dbfs(0.0) == "0.0 dBFS"
-    assert _format_dbfs(-12.34) == "-12.3 dBFS"
+    assert _format_dbfs(-0.00003) == "0.0 dB"
+    assert _format_dbfs(0.0) == "0.0 dB"
+    assert _format_dbfs(-12.34) == "-12.3 dB"
+
+
+def test_format_dbfs_applies_offset() -> None:
+    assert _format_dbfs(-12.0, offset_db=100.0) == "88.0 dB"
 
 
 def test_format_uptime_returns_human_readable_duration() -> None:
