@@ -48,56 +48,6 @@
         <p>Brak zdarzeń dla bieżącej doby.</p>
       {% endif %}
     </article>
-    <article class="card">
-      <h3><a href="{{ url_for('bird_events', period=range_state.period, date=range_state.date) }}">Ptaki</a></h3>
-      {% if dashboard.bird_species_counts %}
-        <ul class="plain-list">
-          {% for row in dashboard.bird_species_counts %}
-            <li>
-              <span>{{ row.species }}</span>
-              <strong>{{ row.total }}</strong>
-            </li>
-          {% endfor %}
-        </ul>
-      {% else %}
-        <p>Brak rozpoznanych gatunków ptaków dla bieżącej doby.</p>
-      {% endif %}
-    </article>
-  </section>
-
-  <section class="card">
-    <h3>Ostatnie rozpoznane gatunki</h3>
-    {% if dashboard.bird_species %}
-      <table class="events-table">
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Start</th>
-            <th>Gatunek</th>
-            <th>Czas nagrania</th>
-            <th>Pik</th>
-            <th>Pewność</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in dashboard.bird_species %}
-            <tr>
-              <td><a href="{{ url_for('event_details', event_id=row.id) }}">#{{ row.id }}</a></td>
-              <td>{{ row.started_at }}</td>
-              <td>
-                {{ row.species }}
-                <span class="inline-badge">BirdNET</span>
-              </td>
-              <td>{{ '%.1f'|format(row.duration_seconds) }} s</td>
-              <td>{{ format_dbfs(row.peak_dbfs) }}</td>
-              <td>{{ '%.2f'|format(row.confidence) }}</td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    {% else %}
-      <p>Brak rozpoznanych gatunków ptaków.</p>
-    {% endif %}
   </section>
 
   <section class="card">
@@ -136,9 +86,6 @@
               <td>{{ row.started_at }}</td>
               <td>
                 <a href="{{ url_for('category_events', category=row.category, period='day', date=row.started_at[:10]) }}">{{ translate_label(row.category) }}</a>
-                {% if row.category == 'birdnet_remote' %}
-                  <span class="inline-badge">BirdNET</span>
-                {% endif %}
               </td>
               <td>{{ '%.1f'|format(row.duration_seconds) }} s</td>
               <td>{{ format_dbfs(row.peak_dbfs) }}</td>

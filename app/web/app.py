@@ -4,10 +4,11 @@ import csv
 import os
 import shutil
 import subprocess
+from io import BytesIO
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from flask import Flask, abort, jsonify, redirect, render_template, request, send_file, url_for
+from flask import Flask, Response, abort, jsonify, redirect, render_template, request, send_file, url_for
 
 from app.audio_devices import AudioCaptureError, list_capture_devices
 from app.classify.heuristics import CATEGORY_LABELS
@@ -23,14 +24,13 @@ from app.config import (
     load_config,
     save_config,
 )
-from app.pipeline import RuntimeStatus
+from app.pipeline import LiveAudioBuffer, RuntimeStatus
 from app.storage.database import SQLiteRepository
 
 CLASSIFIER_LABELS = {
     "yamnet_litert": "Lokalny YAMNet (LiteRT)",
     "heuristic_baseline": "Heurystyczny klasyfikator bazowy",
     "heuristic_fallback": "Heurystyczny tryb awaryjny",
-    "birdnet_remote": "Zdalny BirdNET",
 }
 
 WORKER_STATE_LABELS = {
@@ -65,7 +65,7 @@ SETTINGS_PRESETS = {
             "focus_clip_seconds": 8.0,
         },
     },
-    "yard_birds": {
+    "yard_nature": {
         "label": "Ogród / ptaki",
         "description": "Bardziej czuły na krótkie i delikatniejsze sygnały, dobry do ptaków i przyrody.",
         "detection": {
@@ -398,56 +398,6 @@ SETTINGS_SECTIONS = (
                 "step": 1,
                 "unit": "etykiet",
             },
-            {
-                "name": "classifier.birdnet_timeout_seconds",
-                "label": "Timeout BirdNET",
-                "kind": "range",
-                "description": "Maksymalny czas oczekiwania na odpowiedź API BirdNET.",
-                "min": 3.0,
-                "max": 60.0,
-                "step": 1.0,
-                "unit": "s",
-            },
-            {
-                "name": "classifier.birdnet_min_confidence",
-                "label": "Minimalna pewność BirdNET",
-                "kind": "range",
-                "description": "Niżej = więcej gatunków, wyżej = bardziej konserwatywne wyniki.",
-                "min": 0.05,
-                "max": 0.95,
-                "step": 0.05,
-                "unit": "",
-            },
-            {
-                "name": "classifier.birdnet_num_results",
-                "label": "Liczba wyników BirdNET",
-                "kind": "range",
-                "description": "Ile najlepszych trafień przechowywać w szczegółach decyzji.",
-                "min": 1,
-                "max": 10,
-                "step": 1,
-                "unit": "wyników",
-            },
-            {
-                "name": "classifier.birdnet_locale",
-                "label": "Język wyników BirdNET",
-                "kind": "select",
-                "description": "Preferowany język nazw zwyczajowych, jeśli serwer BirdNET go obsługuje.",
-                "options": [
-                    {"value": "pl", "label": "Polski"},
-                    {"value": "en", "label": "Angielski"},
-                    {"value": "de", "label": "Niemiecki"},
-                    {"value": "fr", "label": "Francuski"},
-                    {"value": "es", "label": "Hiszpański"},
-                ],
-            },
-            {
-                "name": "classifier.birdnet_api_url",
-                "label": "Adres API BirdNET",
-                "kind": "text",
-                "description": "Adres serwera BirdNET. Zostaw puste, jeśli integracja ma być wyłączona.",
-                "placeholder": "http://host:port",
-            },
         ),
     },
     {
@@ -644,7 +594,12 @@ YAMNET_LABEL_TRANSLATIONS = {
 }
 
 
-def create_app(repository: SQLiteRepository, status: RuntimeStatus, config: AppConfig) -> Flask:
+def create_app(
+    repository: SQLiteRepository,
+    status: RuntimeStatus,
+    config: AppConfig,
+    live_audio_buffer: LiveAudioBuffer | None = None,
+) -> Flask:
     app = Flask(__name__, template_folder="templates", static_folder="static")
     config_state = {"value": config}
 
@@ -667,8 +622,13 @@ def create_app(repository: SQLiteRepository, status: RuntimeStatus, config: AppC
             "format_local_timestamp": _format_local_timestamp,
             "format_uptime_seconds": _format_uptime_seconds,
             "format_worker_state": _format_worker_state,
+            "live_audio_available": live_audio_buffer is not None,
             "manual_label_options": current_manual_label_options(),
-            "nav_links": _navigation_links(),
+            "nav_links": [
+                {"href": url_for("index"), "label": "Panel"},
+                {"href": url_for("settings"), "label": "Ustawienia"},
+                {"action": "live", "label": "Live"},
+            ],
             "settings_sections": SETTINGS_SECTIONS,
             "settings_presets": SETTINGS_PRESETS,
             "translate_label": _translate_label,
@@ -695,6 +655,7 @@ def create_app(repository: SQLiteRepository, status: RuntimeStatus, config: AppC
             recent_events=recent_events,
             range_events_url=url_for("range_events_api", period=range_state["period"], date=range_state["date"]),
             chart=chart,
+            live_audio_available=live_audio_buffer is not None,
         )
 
     @app.get("/api/events")
@@ -767,18 +728,48 @@ def create_app(repository: SQLiteRepository, status: RuntimeStatus, config: AppC
             events=events,
         )
 
-    @app.get("/birds")
-    def bird_events():
-        range_state = _resolve_range_state(request.args)
-        events = repository.list_bird_events_range(
-            started_at=range_state["started_at"],
-            ended_at=range_state["ended_at"],
-            limit=200,
+    @app.get("/api/live-audio")
+    def live_audio():
+        if live_audio_buffer is None:
+            abort(404)
+        try:
+            seconds = float(request.args.get("seconds", 12.0))
+        except ValueError:
+            seconds = 12.0
+        seconds = max(3.0, min(seconds, 30.0))
+        wav_bytes = live_audio_buffer.snapshot_wav_bytes(seconds)
+        if not wav_bytes:
+            abort(404)
+        return send_file(
+            BytesIO(wav_bytes),
+            mimetype="audio/wav",
+            as_attachment=False,
+            download_name="live-audio.wav",
+            max_age=0,
         )
-        return render_template(
-            "birds.html",
-            range_state=range_state,
-            events=events,
+
+    @app.get("/api/live-audio-stream")
+    def live_audio_stream():
+        if live_audio_buffer is None:
+            abort(404)
+        try:
+            seconds = float(request.args.get("seconds", 12.0))
+        except ValueError:
+            seconds = 12.0
+        seconds = max(3.0, min(seconds, 30.0))
+
+        def generate():
+            yield from live_audio_buffer.stream_wav_bytes(seconds)
+
+        return Response(
+            generate(),
+            mimetype="audio/wav",
+            direct_passthrough=True,
+            headers={
+                "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                "Pragma": "no-cache",
+                "X-Accel-Buffering": "no",
+            },
         )
 
     @app.route("/settings", methods=["GET", "POST"])
@@ -919,8 +910,10 @@ def _add_months(value: date, months: int) -> date:
 def _bucket_mode_for_period(period: str) -> tuple[str, slice]:
     if period == "year":
         return "month", slice(0, 7)
-    if period in {"week", "month"}:
-        return "day", slice(5, 10)
+    if period == "week":
+        return "hour", slice(5, 13)
+    if period == "month":
+        return "six_hour", slice(5, 13)
     return "ten_minute", slice(11, 16)
 
 
@@ -963,14 +956,6 @@ def _format_dbfs(value: float | int | None, decimals: int = 1) -> str:
     if abs(normalized) < threshold:
         normalized = 0.0
     return f"{normalized:.{decimals}f} dBFS"
-
-
-def _navigation_links() -> list[dict[str, str]]:
-    return [
-        {"endpoint": "index", "label": "Panel"},
-        {"endpoint": "bird_events", "label": "Ptaki"},
-        {"endpoint": "settings", "label": "Ustawienia"},
-    ]
 
 
 def _capture_device_options(config: AppConfig) -> list[dict[str, str]]:
@@ -1020,11 +1005,6 @@ def _settings_values(config: AppConfig) -> dict[str, object]:
         "classifier.yamnet_max_windows": config.classifier.yamnet_max_windows,
         "classifier.yamnet_min_category_score": config.classifier.yamnet_min_category_score,
         "classifier.yamnet_top_k": config.classifier.yamnet_top_k,
-        "classifier.birdnet_timeout_seconds": config.classifier.birdnet_timeout_seconds,
-        "classifier.birdnet_min_confidence": config.classifier.birdnet_min_confidence,
-        "classifier.birdnet_num_results": config.classifier.birdnet_num_results,
-        "classifier.birdnet_locale": config.classifier.birdnet_locale,
-        "classifier.birdnet_api_url": config.classifier.birdnet_api_url,
         "storage.keep_clips": "true" if config.storage.keep_clips else "false",
         "storage.clip_max_megabytes": config.storage.clip_max_megabytes,
         "storage.clip_max_age_days": config.storage.clip_max_age_days,
@@ -1111,11 +1091,6 @@ def _build_config_from_form(config: AppConfig, form) -> AppConfig:
             yamnet_max_windows=_int_from_form(form, "classifier.yamnet_max_windows"),
             yamnet_min_category_score=_float_from_form(form, "classifier.yamnet_min_category_score"),
             yamnet_top_k=_int_from_form(form, "classifier.yamnet_top_k"),
-            birdnet_api_url=form.get("classifier.birdnet_api_url", "").strip(),
-            birdnet_timeout_seconds=_float_from_form(form, "classifier.birdnet_timeout_seconds"),
-            birdnet_min_confidence=_float_from_form(form, "classifier.birdnet_min_confidence"),
-            birdnet_num_results=_int_from_form(form, "classifier.birdnet_num_results"),
-            birdnet_locale=form.get("classifier.birdnet_locale", config.classifier.birdnet_locale),
         ),
         storage=StorageConfig(
             database_path=_resolve_settings_path(config.base_dir, form.get("storage.database_path", "")),
@@ -1169,11 +1144,11 @@ def _describe_classifier_decision(decision: dict[str, object]) -> dict[str, obje
     cache_hit = bool(normalized_details.get("cache_hit"))
     external_api_name = normalized_details.get("external_api_name") or normalized_details.get("api_name")
     used_external_api = bool(normalized_details.get("used_external_api") or external_api_name)
-    external_api_label = _translate_external_api_name(str(external_api_name)) if external_api_name else None
+    external_api_label = "Zewnętrzne API" if external_api_name else None
 
     if used_external_api:
         source = "external_api"
-        source_label = f"Zewnętrzne API: {external_api_label or 'nieznane'}"
+        source_label = "Zewnętrzne API"
     elif cache_hit:
         source = "cache_reuse"
         source_label = "Ponowne użycie z lokalnego cache"
@@ -1216,22 +1191,6 @@ def _describe_classifier_decision(decision: dict[str, object]) -> dict[str, obje
         )
         category_scores = [{"category": name, "score": score} for name, score in sorted_scores[:5]]
 
-    birdnet_results_raw = normalized_details.get("birdnet_results")
-    birdnet_results: list[dict[str, object]] = []
-    if isinstance(birdnet_results_raw, list):
-        for item in birdnet_results_raw[:5]:
-            if not isinstance(item, dict):
-                continue
-            score = item.get("score")
-            birdnet_results.append(
-                {
-                    "species_label": str(item.get("species_label") or ""),
-                    "common_name": str(item.get("common_name") or ""),
-                    "scientific_name": str(item.get("scientific_name") or ""),
-                    "score": float(score) if isinstance(score, int | float) else None,
-                }
-            )
-
     return {
         "classifier_name": classifier_name,
         "classifier_label": _translate_classifier_name(classifier_name),
@@ -1244,41 +1203,6 @@ def _describe_classifier_decision(decision: dict[str, object]) -> dict[str, obje
         "cache_similarity": normalized_details.get("cache_similarity"),
         "cache_source_event_id": normalized_details.get("cache_source_event_id"),
         "fallback_reason": normalized_details.get("fallback_reason"),
-        "birdnet_common_name": (
-            str(normalized_details.get("birdnet_common_name")) if normalized_details.get("birdnet_common_name") else None
-        ),
-        "birdnet_scientific_name": (
-            str(normalized_details.get("birdnet_scientific_name"))
-            if normalized_details.get("birdnet_scientific_name")
-            else None
-        ),
-        "birdnet_trigger_labels": [
-            str(item) for item in normalized_details.get("birdnet_trigger_labels", []) if isinstance(item, str)
-        ]
-        if isinstance(normalized_details.get("birdnet_trigger_labels"), list)
-        else [],
-        "birdnet_trigger_labels_translated": [
-            _translate_label(str(item))
-            for item in normalized_details.get("birdnet_trigger_labels", [])
-            if isinstance(item, str)
-        ]
-        if isinstance(normalized_details.get("birdnet_trigger_labels"), list)
-        else [],
-        "birdnet_lookup_status": _translate_birdnet_lookup_status(
-            str(normalized_details.get("birdnet_lookup_status"))
-            if normalized_details.get("birdnet_lookup_status")
-            else None
-        ),
-        "birdnet_lookup_reason": (
-            str(normalized_details.get("birdnet_lookup_reason"))
-            if normalized_details.get("birdnet_lookup_reason")
-            else None
-        ),
-        "birdnet_trigger_summary": _summarize_birdnet_triggers(
-            [
-                str(item) for item in normalized_details.get("birdnet_trigger_labels", []) if isinstance(item, str)
-            ]
-        ),
         "resolved_label": str(normalized_details.get("resolved_label")) if normalized_details.get("resolved_label") else None,
         "resolved_label_score": (
             float(normalized_details.get("resolved_label_score"))
@@ -1288,49 +1212,11 @@ def _describe_classifier_decision(decision: dict[str, object]) -> dict[str, obje
         "cache_category_promoted": bool(normalized_details.get("cache_category_promoted")),
         "top_labels": top_labels,
         "category_scores": category_scores,
-        "birdnet_results": birdnet_results,
     }
 
 
 def _translate_classifier_name(name: str) -> str:
     return CLASSIFIER_LABELS.get(name, _translate_label(name))
-
-
-def _translate_external_api_name(name: str | None) -> str | None:
-    if not name:
-        return None
-    if name == "BirdNET API":
-        return "API BirdNET"
-    if name == "BirdNET Cloud":
-        return "Chmura BirdNET"
-    return name
-
-
-def _summarize_birdnet_triggers(labels: list[str]) -> str | None:
-    if not labels:
-        return None
-
-    normalized = {label.casefold() for label in labels}
-    has_bird = any("bird" in label for label in normalized)
-    has_animal = any("animal" in label for label in normalized)
-
-    if has_bird and has_animal:
-        return "BirdNET uruchomiono przez etykietę ptasią i zwierzęcą YAMNet"
-    if has_bird:
-        return "BirdNET uruchomiono przez etykietę ptasią YAMNet"
-    if has_animal:
-        return "BirdNET uruchomiono przez etykietę zwierzęcą YAMNet"
-    return "BirdNET uruchomiono przez etykietę YAMNet"
-
-
-def _translate_birdnet_lookup_status(status: str | None) -> str | None:
-    if not status:
-        return None
-    return {
-        "disabled": "BirdNET nie skonfigurowano",
-        "no_result": "BirdNET bez wyniku",
-        "error": "BirdNET błąd",
-    }.get(status, status)
 
 
 def _format_worker_state(value: str | None) -> str:
@@ -1366,15 +1252,12 @@ def _load_manual_label_options(class_map_path: Path) -> list[dict[str, str]]:
 
 
 def _read_system_status(config: AppConfig) -> dict[str, object]:
-    birdnet_api_url = config.classifier.birdnet_api_url.strip()
     return {
         "uptime_seconds": _read_system_uptime_seconds(),
         "cpu_percent": _read_cpu_load_percent(),
         "cpu_temperature_c": _read_cpu_temperature_c(),
         "memory_available_gb": _read_memory_available_gb(),
         "disk_free_gb": _read_disk_free_gb(config.storage.database_path.parent),
-        "birdnet_service": _read_systemd_service_status("birdnet-server") if birdnet_api_url else None,
-        "birdnet_api_url": birdnet_api_url or None,
     }
 
 

@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterable
+from collections import deque
 from datetime import datetime
-from threading import Event, Lock
+from threading import Condition, Event, Lock
+
+import numpy as np
 
 from app.aggregate.event_aggregator import EventAggregator
 from app.classify.service import AppClassifier
@@ -49,11 +52,119 @@ class RuntimeStatus:
             return dict(self._data)
 
 
+class LiveAudioBuffer:
+    def __init__(self, sample_rate: int, max_seconds: float = 20.0) -> None:
+        self.sample_rate = sample_rate
+        self.max_seconds = max_seconds
+        self._lock = Lock()
+        self._condition = Condition(self._lock)
+        self._chunks: deque[tuple[int, datetime, bytes, float]] = deque()
+        self._duration_seconds = 0.0
+        self._sequence = 0
+
+    def append(self, started_at: datetime, samples: np.ndarray, duration_seconds: float) -> None:
+        if samples.size == 0 or duration_seconds <= 0:
+            return
+        chunk = np.asarray(samples, dtype=np.float32).copy()
+        pcm = np.clip(chunk, -1.0, 1.0)
+        pcm_i16 = (pcm * 32767.0).astype("<i2")
+        chunk_bytes = pcm_i16.tobytes()
+        with self._lock:
+            self._sequence += 1
+            self._chunks.append((self._sequence, started_at, chunk_bytes, duration_seconds))
+            self._duration_seconds += duration_seconds
+            while self._chunks and self._duration_seconds > self.max_seconds:
+                _old_sequence, _old_started_at, _old_bytes, old_duration = self._chunks.popleft()
+                self._duration_seconds -= old_duration
+            self._condition.notify_all()
+
+    def snapshot(self, seconds: float) -> np.ndarray:
+        if seconds <= 0:
+            return np.array([], dtype=np.float32)
+        with self._lock:
+            if not self._chunks:
+                return np.array([], dtype=np.float32)
+            selected: list[bytes] = []
+            total = 0.0
+            for _sequence, _started_at, chunk_bytes, duration_seconds in reversed(self._chunks):
+                selected.append(chunk_bytes)
+                total += duration_seconds
+                if total >= seconds:
+                    break
+        if not selected:
+            return np.array([], dtype=np.float32)
+        pcm_i16 = np.frombuffer(b"".join(reversed(selected)), dtype="<i2")
+        return pcm_i16.astype(np.float32) / 32768.0
+
+    def snapshot_wav_bytes(self, seconds: float) -> bytes:
+        samples = self.snapshot(seconds)
+        if samples.size == 0:
+            return b""
+        return _build_wav_bytes(samples, self.sample_rate)
+
+    def stream_wav_bytes(self, seconds: float, stop_event: Event | None = None):
+        yield _build_wav_header(self.sample_rate, 1, 2, 0xFFFFFFFF)
+        initial = self.snapshot_wav_bytes(seconds)
+        if initial:
+            # Strip RIFF header and stream the PCM payload immediately.
+            yield initial[44:]
+
+        last_sequence = self._sequence
+        while True:
+            if stop_event and stop_event.is_set():
+                break
+            with self._condition:
+                self._condition.wait(timeout=1.0)
+                if stop_event and stop_event.is_set():
+                    break
+                pending = [chunk_bytes for seq, _started_at, chunk_bytes, _duration_seconds in self._chunks if seq > last_sequence]
+                if self._chunks:
+                    last_sequence = self._chunks[-1][0]
+            if not pending:
+                continue
+            for chunk_bytes in pending:
+                yield chunk_bytes
+
+
+def _build_wav_bytes(samples: np.ndarray, sample_rate: int) -> bytes:
+    pcm = np.clip(samples.astype(np.float32, copy=False), -1.0, 1.0)
+    pcm_i16 = (pcm * 32767.0).astype("<i2")
+    import io
+    import wave
+
+    handle = io.BytesIO()
+    with wave.open(handle, "wb") as wav_handle:
+        wav_handle.setnchannels(1)
+        wav_handle.setsampwidth(2)
+        wav_handle.setframerate(sample_rate)
+        wav_handle.writeframes(pcm_i16.tobytes())
+    return handle.getvalue()
+
+
+def _build_wav_header(sample_rate: int, channels: int, sample_width: int, data_size: int) -> bytes:
+    import struct
+
+    byte_rate = sample_rate * channels * sample_width
+    block_align = channels * sample_width
+    return b"".join(
+        [
+            b"RIFF",
+            struct.pack("<I", min(0xFFFFFFFF, 36 + data_size)),
+            b"WAVE",
+            b"fmt ",
+            struct.pack("<IHHIIHH", 16, 1, channels, sample_rate, byte_rate, block_align, sample_width * 8),
+            b"data",
+            struct.pack("<I", min(0xFFFFFFFF, data_size)),
+        ]
+    )
+
+
 class AudioPipeline:
     def __init__(self, config: AppConfig, repository: SQLiteRepository, status: RuntimeStatus) -> None:
         self.config = config
         self.repository = repository
         self.status = status
+        self.live_audio_buffer = LiveAudioBuffer(config.audio.sample_rate)
         self.extractor = FeatureExtractor(config.audio.sample_rate)
         self.detector = AdaptiveEnergyDetector(config.detection)
         self.noise_collector = NoiseIntervalCollector(config.aggregation.noise_interval_seconds)
@@ -82,6 +193,7 @@ class AudioPipeline:
             self._flush()
 
     def process_frame(self, frame: AudioFrame) -> None:
+        self.live_audio_buffer.append(frame.started_at, frame.samples, frame.duration_seconds)
         features = self.extractor.extract(frame)
         detection_state = self.detector.process(features)
         self.status.update(

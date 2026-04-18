@@ -89,71 +89,6 @@ def test_describe_classifier_decision_marks_cache_reuse() -> None:
     assert trace["source_label"] == "Ponowne użycie z lokalnego cache"
 
 
-def test_describe_classifier_decision_marks_external_api_when_present() -> None:
-    trace = _describe_classifier_decision(
-        {
-            "classifier_name": "birdnet_remote",
-            "classifier_version": "1",
-            "details": {
-                "used_external_api": True,
-                "external_api_name": "BirdNET API",
-                "birdnet_common_name": "Bogatka",
-                "birdnet_scientific_name": "Parus major",
-                "birdnet_results": [
-                    {
-                        "species_label": "Poecile major",
-                        "common_name": "Bogatka",
-                        "scientific_name": "Parus major",
-                        "score": 0.9321,
-                    },
-                    {
-                        "species_label": "Poecile palustris",
-                        "common_name": "Sikora uboga",
-                        "scientific_name": "Poecile palustris",
-                        "score": 0.221,
-                    },
-                ],
-                "birdnet_trigger_labels": ["Bird", "Animal", "Bird vocalization, bird call, bird song"],
-                "birdnet_lookup_status": "no_result",
-                "birdnet_lookup_reason": "BirdNET nie zwrócił wyniku powyżej progu",
-            },
-        }
-    )
-
-    assert trace["source"] == "external_api"
-    assert trace["used_external_api"] is True
-    assert trace["external_api_name"] == "API BirdNET"
-    assert trace["birdnet_common_name"] == "Bogatka"
-    assert trace["birdnet_scientific_name"] == "Parus major"
-    assert trace["birdnet_results"][0]["common_name"] == "Bogatka"
-    assert trace["birdnet_results"][0]["score"] == 0.9321
-    assert trace["birdnet_lookup_status"] == "BirdNET bez wyniku"
-    assert trace["birdnet_lookup_reason"] == "BirdNET nie zwrócił wyniku powyżej progu"
-    assert trace["birdnet_trigger_labels"] == ["Bird", "Animal", "Bird vocalization, bird call, bird song"]
-    assert trace["birdnet_trigger_summary"] == "BirdNET uruchomiono przez etykietę ptasią i zwierzęcą YAMNet"
-
-
-def test_describe_classifier_decision_marks_disabled_birdnet_lookup() -> None:
-    trace = _describe_classifier_decision(
-        {
-            "classifier_name": "yamnet_litert",
-            "classifier_version": "1",
-            "details": {
-                "cache_hit": False,
-                "resolved_label": "Animal",
-                "resolved_label_score": 0.361,
-                "birdnet_trigger_labels": ["Animal", "Bird"],
-                "birdnet_lookup_status": "disabled",
-                "birdnet_lookup_reason": "BirdNET API nie jest skonfigurowane",
-            },
-        }
-    )
-
-    assert trace["birdnet_lookup_status"] == "BirdNET nie skonfigurowano"
-    assert trace["birdnet_lookup_reason"] == "BirdNET API nie jest skonfigurowane"
-    assert trace["birdnet_trigger_summary"] == "BirdNET uruchomiono przez etykietę ptasią i zwierzęcą YAMNet"
-
-
 def test_read_cpu_load_percent(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("app.web.app.os.cpu_count", lambda: 4)
     monkeypatch.setattr("app.web.app.os.getloadavg", lambda: (1.5, 1.0, 0.5))
@@ -222,7 +157,6 @@ def test_read_memory_and_disk_and_compose_system_status(
     assert status["cpu_temperature_c"] == 52.0
     assert status["memory_available_gb"] == 1.0
     assert status["disk_free_gb"] == 7.0
-    assert status["birdnet_service"] is None
 
 
 def test_read_systemd_service_status(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -236,7 +170,7 @@ def test_read_systemd_service_status(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr("app.web.app.subprocess.run", fake_run)
 
-    status = _read_systemd_service_status("birdnet-server")
+    status = _read_systemd_service_status("ssh")
 
     assert status == {"active": "active", "enabled": "enabled"}
     assert calls[0][:2] == ["systemctl", "is-active"]

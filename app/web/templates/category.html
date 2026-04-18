@@ -31,9 +31,6 @@
               <td>{{ row.started_at }}</td>
               <td>
                 <a href="{{ url_for('category_events', category=row.category) }}">{{ translate_label(row.category) }}</a>
-                {% if row.category == 'birdnet_remote' %}
-                  <span class="inline-badge">BirdNET</span>
-                {% endif %}
               </td>
               <td>{{ '%.1f'|format(row.duration_seconds) }} s</td>
               <td>{{ format_dbfs(row.peak_dbfs) }}</td>

@@ -57,7 +57,7 @@ def main() -> int:
             return 0
 
         if args.command == "web":
-            run_web_server(repository, status, config)
+            run_web_server(repository, status, config, pipeline.live_audio_buffer)
             return 0
 
         if args.command == "run-live":

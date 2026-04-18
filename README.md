@@ -151,11 +151,6 @@ Jeśli potrzebujesz odświeżyć zależności systemowe lub Python:
 ./scripts/bootstrap_remote.sh
 ```
 
-Jeśli masz jeszcze aktywny lokalny BirdNET i chcesz go wyłączyć:
-
-```bash
-./scripts/disable_birdnet.sh
-```
 
 ## Uruchomienie jako usługa
 

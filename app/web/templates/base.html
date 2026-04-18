@@ -13,9 +13,35 @@
         <h1><a href="{{ url_for('index') }}">BAM</a></h1>
         <nav class="page-nav">
           {% for link in nav_links %}
-            <a href="{{ url_for(link.endpoint) }}">{{ link.label }}</a>
+            {% if link.action == 'live' %}
+              <button
+                type="button"
+                class="page-nav-live"
+                data-live-nav-toggle
+                {% if live_audio_available %}aria-pressed="false"{% else %}disabled aria-disabled="true"{% endif %}
+              >
+                {{ link.label }}
+              </button>
+            {% else %}
+              <a href="{{ link.href }}">{{ link.label }}</a>
+            {% endif %}
           {% endfor %}
         </nav>
+        <div class="header-live-box" data-live-control hidden>
+          <div class="header-live-box-inner">
+            <button
+              type="button"
+              class="live-stop"
+              data-live-toggle
+              data-live-src="{{ url_for('live_audio_stream') }}?seconds=12"
+              aria-pressed="false"
+            >
+              Stop
+            </button>
+            <span class="live-time" data-live-time>00:00</span>
+          </div>
+          <audio class="live-audio-player" preload="none" hidden></audio>
+        </div>
       </div>
       <div class="status-card">
         <span class="status-pill {{ status.worker_state if status and status.worker_state else 'idle' }}">
@@ -28,16 +54,6 @@
           <p><strong>Temp CPU</strong> {{ ('%.1f'|format(system_status.cpu_temperature_c) ~ ' C') if system_status.cpu_temperature_c is not none else 'brak danych' }}</p>
           <p><strong>RAM</strong> {{ ('%.2f'|format(system_status.memory_available_gb) ~ ' GB') if system_status.memory_available_gb is not none else 'brak danych' }}</p>
           <p><strong>Dysk</strong> {{ ('%.2f'|format(system_status.disk_free_gb) ~ ' GB') if system_status.disk_free_gb is not none else 'brak danych' }}</p>
-          {% if system_status.birdnet_api_url %}
-            <p>
-              <strong>BirdNET</strong>
-              {% if system_status.birdnet_service and system_status.birdnet_service.active %}
-                {{ 'działa' if system_status.birdnet_service.active == 'active' else system_status.birdnet_service.active }}
-              {% else %}
-                brak danych
-              {% endif %}
-            </p>
-          {% endif %}
         </div>
       </div>
     </header>
@@ -46,6 +62,93 @@
     </main>
     <script>
       (() => {
+        const liveControl = document.querySelector("[data-live-control]");
+        const liveNavToggle = document.querySelector("[data-live-nav-toggle]");
+        if (liveControl) {
+          const toggle = liveControl.querySelector("[data-live-toggle]");
+          const player = liveControl.querySelector("audio");
+          const timer = liveControl.querySelector("[data-live-time]");
+          if (toggle && player && timer) {
+            let startedAt = 0;
+            let timerHandle = null;
+            let stopping = false;
+
+            const pad = (value) => String(value).padStart(2, "0");
+            const formatElapsed = (elapsedMs) => {
+              const totalSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
+              const minutes = Math.floor(totalSeconds / 60);
+              const seconds = totalSeconds % 60;
+              return `${pad(minutes)}:${pad(seconds)}`;
+            };
+
+            const stopTimer = () => {
+              if (timerHandle !== null) {
+                window.clearInterval(timerHandle);
+                timerHandle = null;
+              }
+            };
+
+            const setActive = (active) => {
+              liveControl.hidden = !active;
+              if (liveNavToggle) {
+                liveNavToggle.classList.toggle("active", active);
+                liveNavToggle.setAttribute("aria-pressed", active ? "true" : "false");
+              }
+              toggle.setAttribute("aria-pressed", active ? "true" : "false");
+              timer.textContent = active ? formatElapsed(Date.now() - startedAt) : "00:00";
+            };
+
+            const activate = async () => {
+              const source = new URL(toggle.dataset.liveSrc, window.location.origin);
+              source.searchParams.set("_", Date.now().toString());
+              player.src = source.toString();
+              liveControl.hidden = false;
+              startedAt = Date.now();
+              timer.textContent = "00:00";
+              stopTimer();
+              timerHandle = window.setInterval(() => {
+                timer.textContent = formatElapsed(Date.now() - startedAt);
+              }, 1000);
+              setActive(true);
+              try {
+                await player.play();
+              } catch (error) {
+                void error;
+              }
+            };
+
+            const deactivate = () => {
+              stopping = true;
+              stopTimer();
+              player.pause();
+              player.removeAttribute("src");
+              player.load();
+              liveControl.hidden = true;
+              timer.textContent = "00:00";
+              setActive(false);
+              stopping = false;
+            };
+
+            toggle.addEventListener("click", () => {
+              if (player.paused) {
+                void activate();
+              } else {
+                deactivate();
+              }
+            });
+            if (liveNavToggle) {
+              liveNavToggle.addEventListener("click", () => toggle.click());
+            }
+            player.addEventListener("ended", deactivate);
+            player.addEventListener("pause", () => {
+              if (stopping) return;
+              if (!player.ended && !player.seeking && !liveControl.hidden) {
+                deactivate();
+              }
+            });
+          }
+        }
+
         document.querySelectorAll("[data-range-control]").forEach((control) => {
           const baseUrl = control.dataset.baseUrl || "/";
           const period = control.dataset.period || "day";

@@ -8,7 +8,6 @@ from app.classify.service import (
     AppClassifier,
     YAMNetClassifier,
     YAMNetModelOutput,
-    _extract_bird_trigger_labels,
     compute_audio_signature,
 )
 from app.config import AppConfig, ClassifierConfig, StorageConfig
@@ -82,85 +81,6 @@ def test_app_classifier_does_not_store_similarity_cache_entries(monkeypatch) -> 
     classifier.remember(outcome, 7)
 
     assert repository.inserted == []
-
-
-def test_extract_bird_trigger_labels_covers_birds_and_animals() -> None:
-    decision = ClassifierDecision(
-        "yamnet_litert",
-        "1",
-        "Bird vocalization, bird call, bird song",
-        0.91,
-        {
-            "resolved_label": "Bird vocalization, bird call, bird song",
-            "resolved_label_score": 0.91,
-            "top_labels": [
-                {"label": "Bird", "mean_score": 0.32, "peak_score": 0.67},
-                {"label": "Bird flight, flapping wings", "mean_score": 0.12, "peak_score": 0.21},
-                {"label": "Animal", "mean_score": 0.15, "peak_score": 0.22},
-                {"label": "Turkey", "mean_score": 0.11, "peak_score": 0.19},
-                {"label": "Chicken, rooster", "mean_score": 0.09, "peak_score": 0.18},
-                {"label": "Speech", "mean_score": 0.05, "peak_score": 0.08},
-            ],
-        },
-    )
-
-    labels = _extract_bird_trigger_labels(decision, 0.08)
-
-    assert labels == [
-        "Bird vocalization, bird call, bird song",
-        "Bird",
-        "Bird flight, flapping wings",
-        "Animal",
-        "Turkey",
-        "Chicken, rooster",
-    ]
-
-
-def test_app_classifier_uses_birdnet_for_bird_sounds(monkeypatch) -> None:
-    event = make_event()
-    repository = FakeRepository()
-    classifier = AppClassifier(ClassifierConfig(birdnet_api_url="http://birdnet.local"), repository)  # type: ignore[arg-type]
-    monkeypatch.setattr(
-        classifier.yamnet,
-        "classify",
-        lambda _event: ClassifierDecision(
-            "yamnet_litert",
-            "1",
-            "Bird vocalization, bird call, bird song",
-            0.91,
-            {
-                "resolved_label": "Bird vocalization, bird call, bird song",
-                "resolved_label_score": 0.91,
-                "top_labels": [{"label": "Bird", "mean_score": 0.32, "peak_score": 0.67}],
-                "cache_hit": False,
-            },
-        ),
-    )
-    monkeypatch.setattr(
-        classifier.birdnet,
-        "identify",
-        lambda _event, trigger_labels, decision: ClassifierDecision(
-            "birdnet_remote",
-            "1",
-            "Bogatka",
-            0.88,
-            {
-                **decision.details,
-                "used_external_api": True,
-                "external_api_name": "BirdNET API",
-                "birdnet_common_name": "Bogatka",
-                "birdnet_scientific_name": "Parus major",
-                "birdnet_trigger_labels": trigger_labels,
-            },
-        ),
-    )
-
-    outcome = classifier.classify(event)
-
-    assert outcome.decision.classifier_name == "birdnet_remote"
-    assert outcome.decision.category == "Bogatka"
-    assert outcome.decision.details["birdnet_scientific_name"] == "Parus major"
-    assert outcome.decision.details["birdnet_trigger_labels"] == ["Bird vocalization, bird call, bird song", "Bird"]
 
 
 def test_yamnet_mapping_prefers_specific_emergency_label() -> None:

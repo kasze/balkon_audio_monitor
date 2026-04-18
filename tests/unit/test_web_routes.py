@@ -7,7 +7,7 @@ import numpy as np
 
 from app.config import AppConfig, ClassifierConfig, StorageConfig, load_config
 from app.models import ClassifierDecision, ClipMetadata, CompletedEvent, EventSummary, NoiseInterval
-from app.pipeline import RuntimeStatus
+from app.pipeline import LiveAudioBuffer, RuntimeStatus
 from app.storage.database import SQLiteRepository
 from app.web.app import create_app
 
@@ -104,85 +104,6 @@ def test_manual_label_updates_event_and_category_views(tmp_path: Path) -> None:
     assert "/events/1" in category_response.get_data(as_text=True)
 
 
-def test_birdnet_results_show_badge_in_lists(tmp_path: Path) -> None:
-    repository = SQLiteRepository(tmp_path / "audio_monitor.sqlite3")
-    repository.initialize()
-    now = datetime.now().astimezone().replace(microsecond=0)
-
-    repository.insert_event(
-        _build_event("Bird vocalization, bird call, bird song", now),
-        ClassifierDecision(
-            "birdnet_remote",
-            "1",
-            "Bogatka",
-            0.88,
-            {
-                "used_external_api": True,
-                "external_api_name": "BirdNET API",
-                "birdnet_common_name": "Bogatka",
-                "birdnet_scientific_name": "Parus major",
-                "birdnet_trigger_labels": ["Bird", "Animal"],
-                "birdnet_trigger_summary": "BirdNET uruchomiono przez etykietę ptasią i zwierzęcą YAMNet",
-            },
-        ),
-        None,
-    )
-
-    app = create_app(
-        repository,
-        RuntimeStatus(),
-        AppConfig(
-            base_dir=tmp_path,
-            storage=StorageConfig(database_path=repository.database_path, clip_dir=tmp_path / "clips"),
-        ),
-    )
-    client = app.test_client()
-
-    dashboard_html = client.get("/").get_data(as_text=True)
-    birds_html = client.get("/birds").get_data(as_text=True)
-
-    assert "BirdNET" in dashboard_html
-    assert "BirdNET" in birds_html
-
-
-def test_recent_events_show_birdnet_badge_for_remote_results(tmp_path: Path) -> None:
-    repository = SQLiteRepository(tmp_path / "audio_monitor.sqlite3")
-    repository.initialize()
-    now = datetime.now().astimezone().replace(microsecond=0)
-
-    repository.insert_event(
-        _build_event("Bird vocalization, bird call, bird song", now),
-        ClassifierDecision(
-            "birdnet_remote",
-            "1",
-            "Bogatka",
-            0.88,
-            {
-                "used_external_api": True,
-                "external_api_name": "BirdNET API",
-                "birdnet_common_name": "Bogatka",
-                "birdnet_scientific_name": "Parus major",
-                "birdnet_trigger_labels": ["Bird", "Animal"],
-                "birdnet_trigger_summary": "BirdNET uruchomiono przez etykietę ptasią i zwierzęcą YAMNet",
-            },
-        ),
-        None,
-    )
-
-    app = create_app(
-        repository,
-        RuntimeStatus(),
-        AppConfig(
-            base_dir=tmp_path,
-            storage=StorageConfig(database_path=repository.database_path, clip_dir=tmp_path / "clips"),
-        ),
-    )
-    client = app.test_client()
-
-    html = client.get("/").get_data(as_text=True)
-    assert "BirdNET" in html
-
-
 def test_manual_label_accepts_full_yamnet_label(tmp_path: Path) -> None:
     repository = SQLiteRepository(tmp_path / "audio_monitor.sqlite3")
     repository.initialize()
@@ -270,6 +191,89 @@ def test_event_details_and_lists_prefer_clip_duration_over_event_duration(tmp_pa
     assert "4.0 s" in dashboard_html
 
 
+def test_dashboard_shows_live_audio_player(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "audio_monitor.sqlite3")
+    repository.initialize()
+    buffer = LiveAudioBuffer(sample_rate=16_000, max_seconds=5.0)
+    buffer.append(datetime.now().astimezone(), np.zeros(16_000, dtype=np.float32), 1.0)
+
+    app = create_app(
+        repository,
+        RuntimeStatus(),
+        AppConfig(
+            base_dir=tmp_path,
+            storage=StorageConfig(database_path=repository.database_path, clip_dir=tmp_path / "clips"),
+        ),
+        live_audio_buffer=buffer,
+    )
+    client = app.test_client()
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    html = response.get_data(as_text=True)
+    assert html.count('class="page-nav"') == 1
+    assert "Panel" in html
+    assert "Live" in html
+    assert "Ustawienia" in html
+    assert 'data-live-nav-toggle' in html
+    assert 'data-live-control hidden' in html
+    assert "Stop" in html
+    assert "00:00" in html
+
+
+def test_live_audio_endpoint_returns_recent_wav(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "audio_monitor.sqlite3")
+    repository.initialize()
+    buffer = LiveAudioBuffer(sample_rate=16_000, max_seconds=5.0)
+    buffer.append(datetime.now().astimezone(), np.zeros(16_000, dtype=np.float32), 1.0)
+
+    app = create_app(
+        repository,
+        RuntimeStatus(),
+        AppConfig(
+            base_dir=tmp_path,
+            storage=StorageConfig(database_path=repository.database_path, clip_dir=tmp_path / "clips"),
+        ),
+        live_audio_buffer=buffer,
+    )
+    client = app.test_client()
+
+    response = client.get("/api/live-audio?seconds=1")
+
+    assert response.status_code == 200
+    assert response.mimetype == "audio/wav"
+    assert response.data.startswith(b"RIFF")
+
+
+def test_live_audio_stream_endpoint_returns_audio_stream(tmp_path: Path, monkeypatch) -> None:
+    repository = SQLiteRepository(tmp_path / "audio_monitor.sqlite3")
+    repository.initialize()
+    buffer = LiveAudioBuffer(sample_rate=16_000, max_seconds=5.0)
+
+    def fake_stream(_seconds: float):
+        yield b"RIFFdemo"
+
+    monkeypatch.setattr(buffer, "stream_wav_bytes", fake_stream)
+
+    app = create_app(
+        repository,
+        RuntimeStatus(),
+        AppConfig(
+            base_dir=tmp_path,
+            storage=StorageConfig(database_path=repository.database_path, clip_dir=tmp_path / "clips"),
+        ),
+        live_audio_buffer=buffer,
+    )
+    client = app.test_client()
+
+    response = client.get("/api/live-audio-stream?seconds=1")
+
+    assert response.status_code == 200
+    assert response.mimetype == "audio/wav"
+    assert response.data.startswith(b"RIFF")
+
+
 def test_health_includes_human_uptime(tmp_path: Path) -> None:
     repository = SQLiteRepository(tmp_path / "audio_monitor.sqlite3")
     repository.initialize()
@@ -302,60 +306,6 @@ def test_health_includes_human_uptime(tmp_path: Path) -> None:
     assert response.status_code == 200
     payload = response.get_json()
     assert payload["system_uptime_human"] == "2d 13h 21m"
-
-
-def test_birds_page_and_dashboard_show_recent_bird_species(tmp_path: Path) -> None:
-    repository = SQLiteRepository(tmp_path / "audio_monitor.sqlite3")
-    repository.initialize()
-    now = datetime.now().astimezone().replace(microsecond=0)
-
-    repository.insert_event(
-        _build_event("Bird vocalization, bird call, bird song", now),
-        ClassifierDecision(
-            "birdnet_remote",
-            "1",
-            "Bogatka",
-            0.88,
-            {
-                "used_external_api": True,
-                "external_api_name": "BirdNET API",
-                "birdnet_common_name": "Bogatka",
-                "birdnet_scientific_name": "Parus major",
-            },
-        ),
-        None,
-    )
-    repository.insert_event(
-        _build_event("street_background", now - timedelta(minutes=5)),
-        ClassifierDecision("yamnet_litert", "1", "street_background", 0.7, {}),
-        None,
-    )
-
-    app = create_app(
-        repository,
-        RuntimeStatus(),
-        AppConfig(
-            base_dir=tmp_path,
-            storage=StorageConfig(database_path=repository.database_path, clip_dir=tmp_path / "clips"),
-        ),
-    )
-    client = app.test_client()
-
-    dashboard_response = client.get("/")
-    assert dashboard_response.status_code == 200
-    dashboard_html = dashboard_response.get_data(as_text=True)
-    assert 'href="/birds"' in dashboard_html
-    assert "Bogatka" in dashboard_html
-    assert "BirdNET" in dashboard_html
-
-    birds_response = client.get("/birds")
-    assert birds_response.status_code == 200
-    birds_html = birds_response.get_data(as_text=True)
-    assert "Ostatnio rozpoznane gatunki" in birds_html
-    assert "Bogatka" in birds_html
-    assert "BirdNET" in birds_html
-    assert "/events/1" in birds_html
-    assert "street_background" not in birds_html
 
 
 def test_dashboard_supports_period_navigation(tmp_path: Path) -> None:
@@ -395,7 +345,7 @@ def test_dashboard_supports_period_navigation(tmp_path: Path) -> None:
     assert "Tydzień" in html
     assert 'class="segment-link active"' in html
     assert 'data-calendar-toggle' in html
-    assert 'href="/birds?period=week&amp;date=2026-04-13"' in html
+    assert "Live" in html
 
 
 def test_settings_page_renders_and_saves_config(tmp_path: Path) -> None:
@@ -454,11 +404,6 @@ def test_settings_page_renders_and_saves_config(tmp_path: Path) -> None:
             "classifier.yamnet_max_windows": "24",
             "classifier.yamnet_min_category_score": "0.08",
             "classifier.yamnet_top_k": "8",
-            "classifier.birdnet_timeout_seconds": "15",
-            "classifier.birdnet_min_confidence": "0.20",
-            "classifier.birdnet_num_results": "5",
-            "classifier.birdnet_locale": "pl",
-            "classifier.birdnet_api_url": "http://birdnet.local",
             "storage.keep_clips": "true",
             "storage.clip_max_megabytes": "512",
             "storage.clip_max_age_days": "10",
@@ -475,7 +420,6 @@ def test_settings_page_renders_and_saves_config(tmp_path: Path) -> None:
 
     assert post_response.status_code == 200
     saved = load_config(config_path)
-    assert saved.classifier.birdnet_api_url == "http://birdnet.local"
     assert saved.detection.activation_margin_db == 9.0
     assert saved.detection.min_event_dbfs == -47.0
     assert saved.aggregation.max_event_seconds == 15.0

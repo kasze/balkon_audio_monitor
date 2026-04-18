@@ -82,8 +82,13 @@ class LiveCaptureWorker:
         return selection
 
 
-def run_web_server(repository: SQLiteRepository, status: RuntimeStatus, config: AppConfig) -> None:
-    application = create_app(repository, status, config)
+def run_web_server(
+    repository: SQLiteRepository,
+    status: RuntimeStatus,
+    config: AppConfig,
+    live_audio_buffer=None,
+) -> None:
+    application = create_app(repository, status, config, live_audio_buffer=live_audio_buffer)
     server = create_server(application, host=config.web.host, port=config.web.port, threads=2)
     shutting_down = False
 
@@ -118,7 +123,7 @@ class MonitorServiceRunner:
         self.config.storage.clip_dir.mkdir(parents=True, exist_ok=True)
         self.worker.start()
         try:
-            run_web_server(self.repository, self.status, self.config)
+            run_web_server(self.repository, self.status, self.config, self.pipeline.live_audio_buffer)
         finally:
             self.worker.stop()
             self.worker.join(timeout=5)
