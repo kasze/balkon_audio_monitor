@@ -460,23 +460,23 @@ def test_health_page_shows_sleep_insights(tmp_path: Path) -> None:
         "dominant_modulation_hz": 1.1,
     }
     repository.insert_event(
-        _build_event("street_background", now, duration_seconds=2.4, **snore_kwargs),
-        ClassifierDecision("yamnet_litert", "1", "street_background", 0.7, {}),
+        _build_event("Snoring", now, duration_seconds=2.4, **snore_kwargs),
+        ClassifierDecision("yamnet_litert", "1", "Snoring", 0.7, {}),
         None,
     )
     repository.insert_event(
-        _build_event("street_background", now + timedelta(minutes=2), duration_seconds=2.1, **snore_kwargs),
-        ClassifierDecision("yamnet_litert", "1", "street_background", 0.7, {}),
+        _build_event("Snoring", now + timedelta(minutes=2), duration_seconds=2.1, **snore_kwargs),
+        ClassifierDecision("yamnet_litert", "1", "Snoring", 0.7, {}),
         None,
     )
     repository.insert_event(
-        _build_event("street_background", now + timedelta(minutes=4), duration_seconds=2.8, **snore_kwargs),
-        ClassifierDecision("yamnet_litert", "1", "street_background", 0.7, {}),
+        _build_event("Snoring", now + timedelta(minutes=4), duration_seconds=2.8, **snore_kwargs),
+        ClassifierDecision("yamnet_litert", "1", "Snoring", 0.7, {}),
         None,
     )
     repository.insert_event(
-        _build_event("street_background", now + timedelta(minutes=6), duration_seconds=2.5, **snore_kwargs),
-        ClassifierDecision("yamnet_litert", "1", "street_background", 0.7, {}),
+        _build_event("Snoring", now + timedelta(minutes=6), duration_seconds=2.5, **snore_kwargs),
+        ClassifierDecision("yamnet_litert", "1", "Snoring", 0.7, {}),
         None,
     )
     repository.insert_event(
@@ -519,6 +519,7 @@ def test_health_page_shows_sleep_insights(tmp_path: Path) -> None:
     assert "Kandydaci na chrapanie" in html
     assert "Wskaźnik ryzyka bezdechu" in html
     assert "Najbardziej prawdopodobne epizody chrapania" in html
+    assert "street_background" not in html
 
 
 def test_settings_page_renders_and_saves_config(tmp_path: Path) -> None:

@@ -1,0 +1,522 @@
+mid,display_name,po_polsku
+/m/09x0r,Speech,Mowa
+/m/0ytgt,"Child speech, kid speaking","Mowa dziecka, mówienie dziecka"
+/m/01h8n0,Conversation,Rozmowa
+/m/02qldy,"Narration, monologue","Narracja, monolog"
+/m/0261r1,Babbling,Gaworzenie
+/m/0brhx,Speech synthesizer,Syntezator mowy
+/m/07p6fty,Shout,Krzyk
+/m/07q4ntr,Bellow,Ryk
+/m/07rwj3x,Whoop,Okrzyk radości
+/m/07sr1lc,Yell,Wrzask
+/t/dd00135,Children shouting,Krzyki dzieci
+/m/03qc9zr,Screaming,"Pisk, krzyk"
+/m/02rtxlg,Whispering,Szept
+/m/01j3sz,Laughter,Śmiech
+/t/dd00001,Baby laughter,Śmiech niemowlęcia
+/m/07r660_,Giggle,Chichot
+/m/07s04w4,Snicker,Parsknięcie śmiechem
+/m/07sq110,Belly laugh,Gromki śmiech
+/m/07rgt08,"Chuckle, chortle","Chichot, śmiech"
+/m/0463cq4,"Crying, sobbing","Płacz, szloch"
+/t/dd00002,"Baby cry, infant cry",Płacz niemowlęcia
+/m/07qz6j3,Whimper,"Skowyt, popłakiwanie"
+/m/07qw_06,"Wail, moan","Zawodzenie, jęk"
+/m/07plz5l,Sigh,Westchnienie
+/m/015lz1,Singing,Śpiew
+/m/0l14jd,Choir,Chór
+/m/01swy6,Yodeling,Jodłowanie
+/m/02bk07,Chant,"Chant, śpiew rytmiczny"
+/m/01c194,Mantra,Mantra
+/t/dd00005,Child singing,Śpiew dziecka
+/t/dd00006,Synthetic singing,Śpiew syntetyczny
+/m/06bxc,Rapping,Rapowanie
+/m/02fxyj,Humming,"Mruczenie, nucenie"
+/m/07s2xch,Groan,Jęk
+/m/07r4k75,Grunt,Chrząknięcie
+/m/01w250,Whistling,Gwizdanie
+/m/0lyf6,Breathing,Oddychanie
+/m/07mzm6,Wheeze,Świszczący oddech
+/m/01d3sd,Snoring,Chrapanie
+/m/07s0dtb,Gasp,Gwałtowny wdech
+/m/07pyy8b,Pant,Dyszanie
+/m/07q0yl5,Snort,Parsknięcie nosem
+/m/01b_21,Cough,Kaszel
+/m/0dl9sf8,Throat clearing,Odchrząkiwanie
+/m/01hsr_,Sneeze,Kichnięcie
+/m/07ppn3j,Sniff,Pociąganie nosem
+/m/06h7j,Run,Bieg
+/m/07qv_x_,Shuffle,Szuranie
+/m/07pbtc8,"Walk, footsteps","Chód, kroki"
+/m/03cczk,"Chewing, mastication",Żucie
+/m/07pdhp0,Biting,Gryzienie
+/m/0939n_,Gargling,Płukanie gardła
+/m/01g90h,Stomach rumble,Burczenie w brzuchu
+/m/03q5_w,"Burping, eructation",Bekanie
+/m/02p3nc,Hiccup,Czkawka
+/m/02_nn,Fart,Pierdnięcie
+/m/0k65p,Hands,Dłonie
+/m/025_jnm,Finger snapping,Pstrykanie palcami
+/m/0l15bq,Clapping,Klaskanie
+/m/01jg02,"Heart sounds, heartbeat","Dźwięki serca, bicie serca"
+/m/01jg1z,Heart murmur,Szmer serca
+/m/053hz1,Cheering,"Doping, wiwaty"
+/m/028ght,Applause,Oklaski
+/m/07rkbfh,Chatter,Gawędzenie
+/m/03qtwd,Crowd,Tłum
+/m/07qfr4h,"Hubbub, speech noise, speech babble","Gwar, hałas rozmów, gwar mowy"
+/t/dd00013,Children playing,Bawiące się dzieci
+/m/0jbk,Animal,Zwierzę
+/m/068hy,"Domestic animals, pets","Zwierzęta domowe, pupile"
+/m/0bt9lr,Dog,Pies
+/m/05tny_,Bark,Szczekanie
+/m/07r_k2n,Yip,Piskliwe szczeknięcie
+/m/07qf0zm,Howl,Wycie
+/m/07rc7d9,Bow-wow,Hau-hau
+/m/0ghcn6,Growling,Warczenie
+/t/dd00136,Whimper (dog),Skowyt psa
+/m/01yrx,Cat,Kot
+/m/02yds9,Purr,Mruczenie
+/m/07qrkrw,Meow,Miauczenie
+/m/07rjwbb,Hiss,Syczenie
+/m/07r81j2,Caterwaul,Koci lament
+/m/0ch8v,"Livestock, farm animals, working animals","Bydło hodowlane, zwierzęta gospodarskie i robocze"
+/m/03k3r,Horse,Koń
+/m/07rv9rh,Clip-clop,"Kłus, stukot kopyt"
+/m/07q5rw0,"Neigh, whinny",Rżenie
+/m/01xq0k1,"Cattle, bovinae",Bydło
+/m/07rpkh9,Moo,Muczenie
+/m/0239kh,Cowbell,Krowi dzwonek
+/m/068zj,Pig,Świnia
+/t/dd00018,Oink,Chrząkanie świni
+/m/03fwl,Goat,Koza
+/m/07q0h5t,Bleat,Meczenie
+/m/07bgp,Sheep,Owca
+/m/025rv6n,Fowl,Drób
+/m/09b5t,"Chicken, rooster","Kura, kogut"
+/m/07st89h,Cluck,Kodakanie
+/m/07qn5dc,"Crowing, cock-a-doodle-doo",Pianie koguta
+/m/01rd7k,Turkey,Indyk
+/m/07svc2k,Gobble,Gdakanie indyka
+/m/09ddx,Duck,Kaczka
+/m/07qdb04,Quack,Kwakanie
+/m/0dbvp,Goose,Gęś
+/m/07qwf61,Honk,Gęganie
+/m/01280g,Wild animals,Dzikie zwierzęta
+/m/0cdnk,"Roaring cats (lions, tigers)","Ryczące koty (lwy, tygrysy)"
+/m/04cvmfc,Roar,Ryk
+/m/015p6,Bird,Ptak
+/m/020bb7,"Bird vocalization, bird call, bird song","Wokalizacja ptaka, ptasi odgłos, ptasi śpiew"
+/m/07pggtn,"Chirp, tweet","Ćwierkanie, trel"
+/m/07sx8x_,Squawk,Skrzek
+/m/0h0rv,"Pigeon, dove","Gołąb, synogarlica"
+/m/07r_25d,Coo,Gruchanie
+/m/04s8yn,Crow,Wrona
+/m/07r5c2p,Caw,Krakanie
+/m/09d5_,Owl,Sowa
+/m/07r_80w,Hoot,Pohukiwanie
+/m/05_wcq,"Bird flight, flapping wings","Lot ptaka, trzepot skrzydeł"
+/m/01z5f,"Canidae, dogs, wolves","Psowate, psy, wilki"
+/m/06hps,"Rodents, rats, mice","Gryzonie, szczury, myszy"
+/m/04rmv,Mouse,Mysz
+/m/07r4gkf,Patter,Tuptanie
+/m/03vt0,Insect,Owad
+/m/09xqv,Cricket,Świerszcz
+/m/09f96,Mosquito,Komar
+/m/0h2mp,"Fly, housefly","Mucha, mucha domowa"
+/m/07pjwq1,Buzz,Bzyczenie
+/m/01h3n,"Bee, wasp, etc.","Pszczoła, osa itp."
+/m/09ld4,Frog,Żaba
+/m/07st88b,Croak,Rechot
+/m/078jl,Snake,Wąż
+/m/07qn4z3,Rattle,Grzechotanie
+/m/032n05,Whale vocalization,Wokalizacja wieloryba
+/m/04rlf,Music,Muzyka
+/m/04szw,Musical instrument,Instrument muzyczny
+/m/0fx80y,Plucked string instrument,Instrument strunowy szarpany
+/m/0342h,Guitar,Gitara
+/m/02sgy,Electric guitar,Gitara elektryczna
+/m/018vs,Bass guitar,Gitara basowa
+/m/042v_gx,Acoustic guitar,Gitara akustyczna
+/m/06w87,"Steel guitar, slide guitar","Gitara stalowa, gitara slide"
+/m/01glhc,Tapping (guitar technique),Stukanie (technika gitarowa)
+/m/07s0s5r,Strum,Brzdąkanie
+/m/018j2,Banjo,Banjo
+/m/0jtg0,Sitar,Sitar
+/m/04rzd,Mandolin,Mandolina
+/m/01bns_,Zither,Cytra
+/m/07xzm,Ukulele,Ukulele
+/m/05148p4,Keyboard (musical),Instrument klawiszowy
+/m/05r5c,Piano,Fortepian
+/m/01s0ps,Electric piano,Pianino elektryczne
+/m/013y1f,Organ,Organy
+/m/03xq_f,Electronic organ,Organy elektroniczne
+/m/03gvt,Hammond organ,Organy Hammonda
+/m/0l14qv,Synthesizer,Syntezator
+/m/01v1d8,Sampler,Sampler
+/m/03q5t,Harpsichord,Klawesyn
+/m/0l14md,Percussion,Perkusja
+/m/02hnl,Drum kit,Zestaw perkusyjny
+/m/0cfdd,Drum machine,Automat perkusyjny
+/m/026t6,Drum,Bęben
+/m/06rvn,Snare drum,Werbel
+/m/03t3fj,Rimshot,Uderzenie w obręcz
+/m/02k_mr,Drum roll,Rulon bębna
+/m/0bm02,Bass drum,Bęben basowy
+/m/011k_j,Timpani,Kotły
+/m/01p970,Tabla,Tabla
+/m/01qbl,Cymbal,Talerz
+/m/03qtq,Hi-hat,Hi-hat
+/m/01sm1g,Wood block,Blok drewniany
+/m/07brj,Tambourine,Tamburyn
+/m/05r5wn,Rattle (instrument),Grzechotka (instrument)
+/m/0xzly,Maraca,Marakas
+/m/0mbct,Gong,Gong
+/m/016622,Tubular bells,Dzwony rurowe
+/m/0j45pbj,Mallet percussion,Instrument perkusyjny pałeczkowy
+/m/0dwsp,"Marimba, xylophone","Marimba, ksylofon"
+/m/0dwtp,Glockenspiel,Dzwonki orkiestrowe
+/m/0dwt5,Vibraphone,Wibrafon
+/m/0l156b,Steelpan,Steelpan
+/m/05pd6,Orchestra,Orkiestra
+/m/01kcd,Brass instrument,Instrument blaszany
+/m/0319l,French horn,Waltornia
+/m/07gql,Trumpet,Trąbka
+/m/07c6l,Trombone,Puzon
+/m/0l14_3,Bowed string instrument,Instrument smyczkowy
+/m/02qmj0d,String section,Sekcja smyczkowa
+/m/07y_7,"Violin, fiddle",Skrzypce
+/m/0d8_n,Pizzicato,Pizzicato
+/m/01xqw,Cello,Wiolonczela
+/m/02fsn,Double bass,Kontrabas
+/m/085jw,"Wind instrument, woodwind instrument","Instrument dęty, instrument dęty drewniany"
+/m/0l14j_,Flute,Flet
+/m/06ncr,Saxophone,Saksofon
+/m/01wy6,Clarinet,Klarnet
+/m/03m5k,Harp,Harfa
+/m/0395lw,Bell,Dzwon
+/m/03w41f,Church bell,Dzwon kościelny
+/m/027m70_,Jingle bell,Dzwoneczki
+/m/0gy1t2s,Bicycle bell,Dzwonek rowerowy
+/m/07n_g,Tuning fork,Kamerton
+/m/0f8s22,Chime,Kurant
+/m/026fgl,Wind chime,Dzwonki wietrzne
+/m/0150b9,Change ringing (campanology),Dzwonienie zmianowe (kampanologia)
+/m/03qjg,Harmonica,Harmonijka ustna
+/m/0mkg,Accordion,Akordeon
+/m/0192l,Bagpipes,Dudy
+/m/02bxd,Didgeridoo,Didgeridoo
+/m/0l14l2,Shofar,Szofar
+/m/07kc_,Theremin,Teremin
+/m/0l14t7,Singing bowl,Misa śpiewająca
+/m/01hgjl,Scratching (performance technique),Drapanie (technika wykonawcza)
+/m/064t9,Pop music,Muzyka pop
+/m/0glt670,Hip hop music,Hip-hop
+/m/02cz_7,Beatboxing,Beatbox
+/m/06by7,Rock music,Rock
+/m/03lty,Heavy metal,Heavy metal
+/m/05r6t,Punk rock,Punk rock
+/m/0dls3,Grunge,Grunge
+/m/0dl5d,Progressive rock,Rock progresywny
+/m/07sbbz2,Rock and roll,Rock and roll
+/m/05w3f,Psychedelic rock,Rock psychodeliczny
+/m/06j6l,Rhythm and blues,Rhythm and blues
+/m/0gywn,Soul music,Muzyka soul
+/m/06cqb,Reggae,Reggae
+/m/01lyv,Country,Country
+/m/015y_n,Swing music,Swing
+/m/0gg8l,Bluegrass,Bluegrass
+/m/02x8m,Funk,Funk
+/m/02w4v,Folk music,Muzyka ludowa
+/m/06j64v,Middle Eastern music,Muzyka Bliskiego Wschodu
+/m/03_d0,Jazz,Jazz
+/m/026z9,Disco,Disco
+/m/0ggq0m,Classical music,Muzyka klasyczna
+/m/05lls,Opera,Opera
+/m/02lkt,Electronic music,Muzyka elektroniczna
+/m/03mb9,House music,House
+/m/07gxw,Techno,Techno
+/m/07s72n,Dubstep,Dubstep
+/m/0283d,Drum and bass,Drum and bass
+/m/0m0jc,Electronica,Electronica
+/m/08cyft,Electronic dance music,Elektroniczna muzyka taneczna
+/m/0fd3y,Ambient music,Ambient
+/m/07lnk,Trance music,Trance
+/m/0g293,Music of Latin America,Muzyka Ameryki Łacińskiej
+/m/0ln16,Salsa music,Salsa
+/m/0326g,Flamenco,Flamenco
+/m/0155w,Blues,Blues
+/m/05fw6t,Music for children,Muzyka dla dzieci
+/m/02v2lh,New-age music,Muzyka new age
+/m/0y4f8,Vocal music,Muzyka wokalna
+/m/0z9c,A capella,A cappella
+/m/0164x2,Music of Africa,Muzyka Afryki
+/m/0145m,Afrobeat,Afrobeat
+/m/02mscn,Christian music,Muzyka chrześcijańska
+/m/016cjb,Gospel music,Gospel
+/m/028sqc,Music of Asia,Muzyka Azji
+/m/015vgc,Carnatic music,Muzyka karnatycka
+/m/0dq0md,Music of Bollywood,Muzyka Bollywood
+/m/06rqw,Ska,Ska
+/m/02p0sh1,Traditional music,Muzyka tradycyjna
+/m/05rwpb,Independent music,Muzyka niezależna
+/m/074ft,Song,Piosenka
+/m/025td0t,Background music,Muzyka w tle
+/m/02cjck,Theme music,Muzyka przewodnia
+/m/03r5q_,Jingle (music),Dżingiel
+/m/0l14gg,Soundtrack music,Muzyka ścieżki dźwiękowej
+/m/07pkxdp,Lullaby,Kołysanka
+/m/01z7dr,Video game music,Muzyka z gier wideo
+/m/0140xf,Christmas music,Muzyka bożonarodzeniowa
+/m/0ggx5q,Dance music,Muzyka taneczna
+/m/04wptg,Wedding music,Muzyka weselna
+/t/dd00031,Happy music,Wesoła muzyka
+/t/dd00033,Sad music,Smutna muzyka
+/t/dd00034,Tender music,Czuła muzyka
+/t/dd00035,Exciting music,Ekscytująca muzyka
+/t/dd00036,Angry music,Gniewna muzyka
+/t/dd00037,Scary music,Straszna muzyka
+/m/03m9d0z,Wind,Wiatr
+/m/09t49,Rustling leaves,Szelest liści
+/t/dd00092,Wind noise (microphone),Szum wiatru (mikrofon)
+/m/0jb2l,Thunderstorm,Burza
+/m/0ngt1,Thunder,Grzmot
+/m/0838f,Water,Woda
+/m/06mb1,Rain,Deszcz
+/m/07r10fb,Raindrop,Kropla deszczu
+/t/dd00038,Rain on surface,Deszcz padający na powierzchnię
+/m/0j6m2,Stream,Strumień
+/m/0j2kx,Waterfall,Wodospad
+/m/05kq4,Ocean,Ocean
+/m/034srq,"Waves, surf","Fale, przybój"
+/m/06wzb,Steam,Para
+/m/07swgks,Gurgling,Bulgotanie
+/m/02_41,Fire,Ogień
+/m/07pzfmf,Crackle,Trzaskanie
+/m/07yv9,Vehicle,Pojazd
+/m/019jd,"Boat, Water vehicle","Łódź, pojazd wodny"
+/m/0hsrw,"Sailboat, sailing ship","Żaglówka, statek żaglowy"
+/m/056ks2,"Rowboat, canoe, kayak","Łódź wiosłowa, kanoe, kajak"
+/m/02rlv9,"Motorboat, speedboat","Motorówka, łódź szybka"
+/m/06q74,Ship,Statek
+/m/012f08,Motor vehicle (road),Pojazd silnikowy (drogowy)
+/m/0k4j,Car,Samochód
+/m/0912c9,"Vehicle horn, car horn, honking","Klakson pojazdu, klakson samochodowy, trąbienie"
+/m/07qv_d5,Toot,Trąbnięcie
+/m/02mfyn,Car alarm,Alarm samochodowy
+/m/04gxbd,"Power windows, electric windows",Elektryczne szyby
+/m/07rknqz,Skidding,Poślizg
+/m/0h9mv,Tire squeal,Pisk opon
+/t/dd00134,Car passing by,Przejeżdżający samochód
+/m/0ltv,"Race car, auto racing","Samochód wyścigowy, wyścigi samochodowe"
+/m/07r04,Truck,Ciężarówka
+/m/0gvgw0,Air brake,Hamulec pneumatyczny
+/m/05x_td,"Air horn, truck horn","Sygnał pneumatyczny, klakson ciężarówki"
+/m/02rhddq,Reversing beeps,Sygnały cofania
+/m/03cl9h,"Ice cream truck, ice cream van",Samochód z lodami
+/m/01bjv,Bus,Autobus
+/m/03j1ly,Emergency vehicle,Pojazd uprzywilejowany
+/m/04qvtq,Police car (siren),Samochód policyjny (syrena)
+/m/012n7d,Ambulance (siren),Karetka (syrena)
+/m/012ndj,"Fire engine, fire truck (siren)",Wóz strażacki (syrena)
+/m/04_sv,Motorcycle,Motocykl
+/m/0btp2,"Traffic noise, roadway noise",Hałas ruchu drogowego
+/m/06d_3,Rail transport,Transport kolejowy
+/m/07jdr,Train,Pociąg
+/m/04zmvq,Train whistle,Gwizdek pociągu
+/m/0284vy3,Train horn,Sygnał pociągu
+/m/01g50p,"Railroad car, train wagon",Wagon kolejowy
+/t/dd00048,Train wheels squealing,Pisk kół pociągu
+/m/0195fx,"Subway, metro, underground","Metro, kolej podziemna"
+/m/0k5j,Aircraft,Statek powietrzny
+/m/014yck,Aircraft engine,Silnik lotniczy
+/m/04229,Jet engine,Silnik odrzutowy
+/m/02l6bg,"Propeller, airscrew",Śmigło
+/m/09ct_,Helicopter,Helikopter
+/m/0cmf2,"Fixed-wing aircraft, airplane",Samolot
+/m/0199g,Bicycle,Rower
+/m/06_fw,Skateboard,Deskorolka
+/m/02mk9,Engine,Silnik
+/t/dd00065,Light engine (high frequency),Lekki silnik (wysoka częstotliwość)
+/m/08j51y,"Dental drill, dentist's drill",Wiertło dentystyczne
+/m/01yg9g,Lawn mower,Kosiarka do trawy
+/m/01j4z9,Chainsaw,Piła łańcuchowa
+/t/dd00066,Medium engine (mid frequency),Średni silnik (średnia częstotliwość)
+/t/dd00067,Heavy engine (low frequency),Ciężki silnik (niska częstotliwość)
+/m/01h82_,Engine knocking,Stukanie silnika
+/t/dd00130,Engine starting,Uruchamianie silnika
+/m/07pb8fc,Idling,Praca na biegu jałowym
+/m/07q2z82,"Accelerating, revving, vroom","Przyspieszanie, wkręcanie na obroty, wrrrr"
+/m/02dgv,Door,Drzwi
+/m/03wwcy,Doorbell,Dzwonek do drzwi
+/m/07r67yg,Ding-dong,Ding-dong
+/m/02y_763,Sliding door,Drzwi przesuwne
+/m/07rjzl8,Slam,Trzaśnięcie
+/m/07r4wb8,Knock,Pukanie
+/m/07qcpgn,Tap,Stuknięcie
+/m/07q6cd_,Squeak,Skrzypienie
+/m/0642b4,Cupboard open or close,Otwarcie lub zamknięcie szafki
+/m/0fqfqc,Drawer open or close,Otwarcie lub zamknięcie szuflady
+/m/04brg2,"Dishes, pots, and pans","Naczynia, garnki i patelnie"
+/m/023pjk,"Cutlery, silverware",Sztućce
+/m/07pn_8q,Chopping (food),Siekanie (jedzenia)
+/m/0dxrf,Frying (food),Smażenie (jedzenia)
+/m/0fx9l,Microwave oven,Kuchenka mikrofalowa
+/m/02pjr4,Blender,Blender
+/m/02jz0l,"Water tap, faucet",Kran
+/m/0130jx,Sink (filling or washing),Zlew (napełnianie lub mycie)
+/m/03dnzn,Bathtub (filling or washing),Wanna (napełnianie lub mycie)
+/m/03wvsk,Hair dryer,Suszarka do włosów
+/m/01jt3m,Toilet flush,Spłukiwanie toalety
+/m/012xff,Toothbrush,Szczoteczka do zębów
+/m/04fgwm,Electric toothbrush,Szczoteczka elektryczna
+/m/0d31p,Vacuum cleaner,Odkurzacz
+/m/01s0vc,Zipper (clothing),Zamek błyskawiczny
+/m/03v3yw,Keys jangling,Brzęk kluczy
+/m/0242l,Coin (dropping),Moneta (upadająca)
+/m/01lsmm,Scissors,Nożyczki
+/m/02g901,"Electric shaver, electric razor",Golarka elektryczna
+/m/05rj2,Shuffling cards,Tasowanie kart
+/m/0316dw,Typing,Pisanie na klawiaturze
+/m/0c2wf,Typewriter,Maszyna do pisania
+/m/01m2v,Computer keyboard,Klawiatura komputerowa
+/m/081rb,Writing,Pisanie ręczne
+/m/07pp_mv,Alarm,Alarm
+/m/07cx4,Telephone,Telefon
+/m/07pp8cl,Telephone bell ringing,Dzwonienie telefonu
+/m/01hnzm,Ringtone,Dzwonek telefonu
+/m/02c8p,"Telephone dialing, DTMF","Wybieranie numeru, DTMF"
+/m/015jpf,Dial tone,Sygnał wybierania
+/m/01z47d,Busy signal,Sygnał zajętości
+/m/046dlr,Alarm clock,Budzik
+/m/03kmc9,Siren,Syrena
+/m/0dgbq,Civil defense siren,Syrena obrony cywilnej
+/m/030rvx,Buzzer,Brzęczyk
+/m/01y3hg,"Smoke detector, smoke alarm","Czujnik dymu, alarm dymowy"
+/m/0c3f7m,Fire alarm,Alarm pożarowy
+/m/04fq5q,Foghorn,Syrena mgłowa
+/m/0l156k,Whistle,Gwizdek
+/m/06hck5,Steam whistle,Gwizdek parowy
+/t/dd00077,Mechanisms,Mechanizmy
+/m/02bm9n,"Ratchet, pawl","Zapadka, grzechotka"
+/m/01x3z,Clock,Zegar
+/m/07qjznt,Tick,Tykanie
+/m/07qjznl,Tick-tock,Tik-tak
+/m/0l7xg,Gears,Koła zębate
+/m/05zc1,Pulleys,Bloczki
+/m/0llzx,Sewing machine,Maszyna do szycia
+/m/02x984l,Mechanical fan,Wentylator mechaniczny
+/m/025wky1,Air conditioning,Klimatyzacja
+/m/024dl,Cash register,Kasa fiskalna
+/m/01m4t,Printer,Drukarka
+/m/0dv5r,Camera,Aparat fotograficzny
+/m/07bjf,Single-lens reflex camera,Lustrzanka jednoobiektywowa
+/m/07k1x,Tools,Narzędzia
+/m/03l9g,Hammer,Młotek
+/m/03p19w,Jackhammer,Młot pneumatyczny
+/m/01b82r,Sawing,Piłowanie
+/m/02p01q,Filing (rasp),Piłowanie pilnikiem
+/m/023vsd,Sanding,Szlifowanie
+/m/0_ksk,Power tool,Narzędzie elektryczne
+/m/01d380,Drill,Wiertarka
+/m/014zdl,Explosion,Wybuch
+/m/032s66,"Gunshot, gunfire","Strzał, ostrzał"
+/m/04zjc,Machine gun,Karabin maszynowy
+/m/02z32qm,Fusillade,Salwa
+/m/0_1c,Artillery fire,Ogień artyleryjski
+/m/073cg4,Cap gun,Pistolet na kapiszony
+/m/0g6b5,Fireworks,Fajerwerki
+/g/122z_qxw,Firecracker,Petarda
+/m/07qsvvw,"Burst, pop","Huk, trzask"
+/m/07pxg6y,Eruption,Erupcja
+/m/07qqyl4,Boom,Boom
+/m/083vt,Wood,Drewno
+/m/07pczhz,Chop,Rąbanie
+/m/07pl1bw,Splinter,"Drzazga, pękanie na szczapy"
+/m/07qs1cx,Crack,Pęknięcie
+/m/039jq,Glass,Szkło
+/m/07q7njn,"Chink, clink","Brzęk, dźwięk szkła"
+/m/07rn7sz,Shatter,Roztrzaskanie
+/m/04k94,Liquid,Ciecz
+/m/07rrlb6,"Splash, splatter","Plusk, rozchlapywanie"
+/m/07p6mqd,Slosh,Chlupot
+/m/07qlwh6,Squish,"Mlaskanie, chlupanie"
+/m/07r5v4s,Drip,Kapanie
+/m/07prgkl,Pour,Nalewanie
+/m/07pqc89,"Trickle, dribble","Strużka, ciurkanie"
+/t/dd00088,Gush,"Tryskanie, wylew"
+/m/07p7b8y,Fill (with liquid),Napełnianie (cieczą)
+/m/07qlf79,Spray,Spryskiwanie
+/m/07ptzwd,Pump (liquid),Pompowanie (cieczy)
+/m/07ptfmf,Stir,Mieszanie
+/m/0dv3j,Boiling,"Gotowanie, wrzenie"
+/m/0790c,Sonar,Sonar
+/m/0dl83,Arrow,Strzała
+/m/07rqsjt,"Whoosh, swoosh, swish","Świst, śmignięcie"
+/m/07qnq_y,"Thump, thud","Łomot, głuche uderzenie"
+/m/07rrh0c,Thunk,Tępe uderzenie
+/m/0b_fwt,Electronic tuner,Stroik elektroniczny
+/m/02rr_,Effects unit,Moduł efektów
+/m/07m2kt,Chorus effect,Efekt chorus
+/m/018w8,Basketball bounce,Odbicie piłki do koszykówki
+/m/07pws3f,Bang,"Bang, huk"
+/m/07ryjzk,"Slap, smack","Klapnięcie, pacnięcie"
+/m/07rdhzs,"Whack, thwack","Uderzenie, trzask"
+/m/07pjjrj,"Smash, crash","Rozbicie, kraksa"
+/m/07pc8lb,Breaking,"Łamanie, pękanie"
+/m/07pqn27,Bouncing,"Podskakiwanie, odbijanie"
+/m/07rbp7_,Whip,Bicz
+/m/07pyf11,Flap,Łopot
+/m/07qb_dv,Scratch,Drapanie
+/m/07qv4k0,Scrape,Skrobanie
+/m/07pdjhy,Rub,Pocieranie
+/m/07s8j8t,Roll,Toczenie
+/m/07plct2,Crushing,Zgniatanie
+/t/dd00112,"Crumpling, crinkling","Gniecenie, szeleszczenie"
+/m/07qcx4z,Tearing,Rozdzieranie
+/m/02fs_r,"Beep, bleep","Piknięcie, beep"
+/m/07qwdck,Ping,Ping
+/m/07phxs1,Ding,Ding
+/m/07rv4dm,Clang,Brzęk metaliczny
+/m/07s02z0,Squeal,Pisk
+/m/07qh7jl,Creak,Skrzypienie
+/m/07qwyj0,Rustle,Szelest
+/m/07s34ls,Whir,Wir
+/m/07qmpdm,Clatter,Klekot
+/m/07p9k1k,Sizzle,Skwierczenie
+/m/07qc9xj,Clicking,Klikanie
+/m/07rwm0c,Clickety-clack,Klekot kół
+/m/07phhsh,Rumble,Dudnienie
+/m/07qyrcz,Plop,Plum
+/m/07qfgpx,"Jingle, tinkle",Dźwięk dzwoneczków
+/m/07rcgpl,Hum,Buczenie
+/m/07p78v5,Zing,Zing
+/t/dd00121,Boing,Boing
+/m/07s12q4,Crunch,Chrupnięcie
+/m/028v0c,Silence,Cisza
+/m/01v_m0,Sine wave,Fala sinusoidalna
+/m/0b9m1,Harmonic,Harmoniczna
+/m/0hdsk,Chirp tone,Ton ćwierkający
+/m/0c1dj,Sound effect,Efekt dźwiękowy
+/m/07pt_g0,Pulse,Impuls
+/t/dd00125,"Inside, small room","Wewnątrz, mały pokój"
+/t/dd00126,"Inside, large room or hall","Wewnątrz, duży pokój lub hala"
+/t/dd00127,"Inside, public space","Wewnątrz, przestrzeń publiczna"
+/t/dd00128,"Outside, urban or manmade","Na zewnątrz, teren miejski lub sztuczny"
+/t/dd00129,"Outside, rural or natural","Na zewnątrz, teren wiejski lub naturalny"
+/m/01b9nn,Reverberation,Pogłos
+/m/01jnbd,Echo,Echo
+/m/096m7z,Noise,Hałas
+/m/06_y0by,Environmental noise,Hałas środowiskowy
+/m/07rgkc5,Static,Szum statyczny
+/m/06xkwv,Mains hum,Przydźwięk sieciowy
+/m/0g12c5,Distortion,Zniekształcenie
+/m/08p9q4,Sidetone,"Podsłuch własny, sidetone"
+/m/07szfh9,Cacophony,Kakofonia
+/m/0chx_,White noise,Szum biały
+/m/0cj0r,Pink noise,Szum różowy
+/m/07p_0gm,Throbbing,Pulsowanie
+/m/01jwx6,Vibration,Wibracja
+/m/07c52,Television,Telewizja
+/m/06bz3,Radio,Radio
+/m/07hvw1,Field recording,Nagranie terenowe

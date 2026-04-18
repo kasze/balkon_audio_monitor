@@ -562,81 +562,36 @@ SETTINGS_SECTIONS = (
     },
 )
 
-YAMNET_LABEL_TRANSLATIONS = {
-    "Speech": "Mowa",
-    "Conversation": "Rozmowa",
-    "Narration, speech": "Narracja, wypowiedź",
-    "Narration, monologue": "Narracja, monolog",
-    "Male speech, man speaking": "Męska mowa",
-    "Female speech, woman speaking": "Kobieca mowa",
-    "Child speech, kid speaking": "Mowa dziecka",
-    "Shout": "Krzyk",
-    "Yell": "Wrzask",
-    "Whispering": "Szept",
-    "Singing": "Śpiew",
-    "Choir": "Chór",
-    "Female singing": "Śpiew kobiecy",
-    "Male singing": "Śpiew męski",
-    "Babbling": "Gaworzenie",
-    "Laughter": "Śmiech",
-    "Chuckle, chortle": "Chichot",
-    "Snicker": "Parsknięcie śmiechem",
-    "Inside, small room": "Wewnątrz, mały pokój",
-    "Silence": "Cisza",
-    "Animal": "Zwierzę",
-    "Fowl": "Drób",
-    "Chicken, rooster": "Kura, kogut",
-    "Cluck": "Gdaczenie",
-    "Crowing, cock-a-doodle-doo": "Kukuryku",
-    "Turkey": "Indyk",
-    "Gobble": "Gulgotanie",
-    "Duck": "Kaczka",
-    "Quack": "Kwa-kwa",
-    "Goose": "Gęś",
-    "Honk": "Trąbienie gęsi",
-    "Pigeon, dove": "Gołąb, gołębica",
-    "Coo": "Grukanie",
-    "Crow": "Wrona",
-    "Caw": "Kraknięcie",
-    "Owl": "Sowa",
-    "Hoot": "Puhanie",
-    "Dog": "Pies",
-    "Whimper (dog)": "Skowyt psa",
-    "Howl": "Wycie",
-    "Growling": "Warczenie",
-    "Cat": "Kot",
-    "Caterwaul": "Koci wrzask",
-    "Mouse": "Mysz",
-    "Pig": "Świnia",
-    "Oink": "Kwik",
-    "Goat": "Koza",
-    "Bleat": "Beczenie",
-    "Sheep": "Owca",
-    "Horse": "Koń",
-    "Moo": "Muczenie",
-    "Cattle, bovinae": "Bydło",
-    "Ambulance (siren)": "Karetka (syrena)",
-    "Siren": "Syrena",
-    "Civil defense siren": "Syrena alarmowa obrony cywilnej",
-    "Police car (siren)": "Radiowóz (syrena)",
-    "Car alarm": "Alarm samochodowy",
-    "Fire engine, fire truck (siren)": "Wóz strażacki (syrena)",
-    "Truck": "Ciężarówka",
-    "Fixed-wing aircraft, airplane": "Samolot",
-    "Aircraft": "Statek powietrzny",
-    "Aircraft engine": "Silnik samolotu",
-    "Jet engine": "Silnik odrzutowy",
-    "Helicopter": "Śmigłowiec",
-    "Traffic noise, roadway noise": "Hałas uliczny",
-    "Vehicle": "Pojazd",
-    "Car": "Samochód",
-    "Engine": "Silnik",
-    "Outside, urban or manmade": "Na zewnątrz, środowisko miejskie lub sztuczne",
-    "Burping, eructation": "Beknięcie",
-    "Bird": "Ptak",
-    "Bird vocalization, bird call, bird song": "Głos ptaka, śpiew ptaka",
-    "Bird flight, flapping wings": "Lot ptaka, trzepot skrzydeł",
-}
+YAMNET_TRANSLATION_TABLE_PATH = Path(__file__).resolve().parents[2] / "configs" / "yamnet_class_map_pl.csv"
+
+
+def _yamnet_translation_cache_key() -> tuple[str, int, int]:
+    try:
+        stat_result = YAMNET_TRANSLATION_TABLE_PATH.stat()
+        return (str(YAMNET_TRANSLATION_TABLE_PATH.resolve()), stat_result.st_mtime_ns, stat_result.st_size)
+    except OSError:
+        return (str(YAMNET_TRANSLATION_TABLE_PATH.resolve()), 0, 0)
+
+
+@lru_cache(maxsize=1)
+def _load_yamnet_label_translations(path: str, _mtime_ns: int, _size: int) -> dict[str, str]:
+    translations: dict[str, str] = {}
+    try:
+        with Path(path).open("r", encoding="utf-8") as handle:
+            reader = csv.DictReader(handle)
+            for row in reader:
+                raw_label = (row.get("display_name") or "").strip()
+                translated = (row.get("po_polsku") or "").strip()
+                if raw_label and translated:
+                    translations[raw_label] = translated
+    except OSError:
+        return {}
+    return translations
+
+
+def _yamnet_label_translations() -> dict[str, str]:
+    path, mtime_ns, size = _yamnet_translation_cache_key()
+    return _load_yamnet_label_translations(path, mtime_ns, size)
 
 
 def create_app(
@@ -652,16 +607,14 @@ def create_app(
         return config_state["value"]
 
     def current_manual_label_options() -> list[dict[str, str]]:
-        class_map_path = current_config().classifier.yamnet_class_map_path
-        cache_key = _manual_label_options_cache_key(class_map_path)
+        cache_key = _manual_label_options_cache_key(YAMNET_TRANSLATION_TABLE_PATH)
         return [
             {"value": value, "label": label}
             for value, label in _manual_label_options_for_path(*cache_key)
         ]
 
     def current_manual_label_values() -> set[str]:
-        class_map_path = current_config().classifier.yamnet_class_map_path
-        cache_key = _manual_label_options_cache_key(class_map_path)
+        cache_key = _manual_label_options_cache_key(YAMNET_TRANSLATION_TABLE_PATH)
         return {value for value, _label in _manual_label_options_for_path(*cache_key)}
 
     @app.context_processor
@@ -806,7 +759,7 @@ def create_app(
     def sleep_health():
         range_state = _resolve_range_state(request.args)
         events = repository.list_events_range(
-            category=None,
+            category="Snoring",
             started_at=range_state["started_at"],
             ended_at=range_state["ended_at"],
             limit=500,
@@ -1587,8 +1540,9 @@ def _translate_label(value: str | None) -> str:
         return "-"
     if value in CATEGORY_LABELS:
         return CATEGORY_LABELS[value]
-    if value in YAMNET_LABEL_TRANSLATIONS:
-        return YAMNET_LABEL_TRANSLATIONS[value]
+    yamnet_labels = _yamnet_label_translations()
+    if value in yamnet_labels:
+        return yamnet_labels[value]
     return value
 
 
@@ -1603,6 +1557,7 @@ def _manual_label_options_cache_key(class_map_path: Path) -> tuple[str, int, int
 @lru_cache(maxsize=8)
 def _manual_label_options_for_path(class_map_path: str, _mtime_ns: int, _size: int) -> tuple[tuple[str, str], ...]:
     values: dict[str, str] = {key: label for key, label in CATEGORY_LABELS.items()}
+    values.update(_yamnet_label_translations())
     try:
         with Path(class_map_path).open("r", encoding="utf-8") as handle:
             reader = csv.DictReader(handle)

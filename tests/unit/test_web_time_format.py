@@ -195,6 +195,7 @@ def test_read_systemd_service_status(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_translate_label_and_classifier_name() -> None:
     assert _translate_label("Speech") == "Mowa"
+    assert _translate_label("Snoring") == "Chrapanie"
     assert _translate_label("ambulance") == "Karetka / syrena karetki"
     assert _translate_label("speech") == "Mowa ludzka"
     assert _translate_classifier_name("yamnet_litert") == "Lokalny YAMNet (LiteRT)"

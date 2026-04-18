@@ -4,6 +4,7 @@ from app.models import ClassifierDecision, EventSummary
 
 
 CATEGORY_LABELS = {
+    "Snoring": "Chrapanie",
     "ambulance": "Karetka / syrena karetki",
     "police": "Policja / syrena radiowozu",
     "fire_truck": "Straż pożarna / syrena wozu strażackiego",

@@ -270,6 +270,7 @@
         const minValue = calibrate(Number(canvas.dataset.min || Math.min(...values)));
         const maxValue = calibrate(Number(canvas.dataset.max || Math.max(...values)));
         const span = Math.max(maxValue - minValue, 1);
+        const barMeta = [];
         chartState.set(canvas, {
           labels,
           values: displayValues,
@@ -298,7 +299,6 @@
         const barBase = height - padding.bottom;
         const barMaxHeight = Math.max(18, plotHeight * 0.32);
         const barWidth = Math.max(4, plotWidth / Math.max(values.length * 1.8, 6));
-        const barMeta = [];
         counts.forEach((count, index) => {
           const numericCount = Number(count) || 0;
           if (numericCount <= 0) {
