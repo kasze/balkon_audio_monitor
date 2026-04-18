@@ -620,7 +620,8 @@ class SQLiteRepository:
                 COALESCE(e.user_label, e.category) AS category,
                 e.confidence,
                 e.peak_dbfs,
-                e.user_label
+                e.user_label,
+                e.summary_json
             FROM events e
             LEFT JOIN clips c ON c.id = e.clip_id
         """

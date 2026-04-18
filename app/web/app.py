@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import csv
+import json
 import os
 import shutil
 import subprocess
+import threading
 from functools import lru_cache
 from io import BytesIO
 from datetime import date, datetime, timedelta
 from pathlib import Path
+
+import numpy as np
 
 from flask import Flask, Response, abort, jsonify, redirect, render_template, request, send_file, url_for
 
@@ -420,6 +424,16 @@ SETTINGS_SECTIONS = (
                 "unit": "",
             },
             {
+                "name": "classifier.min_persist_confidence",
+                "label": "Minimalna pewność zapisu eventu",
+                "kind": "range",
+                "description": "Eventy z niższą pewnością po klasyfikacji są ignorowane i nie trafiają do bazy.",
+                "min": 0.0,
+                "max": 1.0,
+                "step": 0.01,
+                "unit": "",
+            },
+            {
                 "name": "classifier.yamnet_top_k",
                 "label": "Liczba top etykiet YAMNet",
                 "kind": "range",
@@ -670,6 +684,7 @@ def create_app(
             "manual_label_options": current_manual_label_options(),
             "nav_links": [
                 {"href": url_for("index"), "label": "Panel"},
+                {"href": url_for("sleep_health"), "label": "Zdrowie"},
                 {"href": url_for("settings"), "label": "Ustawienia"},
                 {"action": "live", "label": "Live"},
             ],
@@ -787,6 +802,22 @@ def create_app(
             events=events,
         )
 
+    @app.get("/zdrowie")
+    def sleep_health():
+        range_state = _resolve_range_state(request.args)
+        events = repository.list_events_range(
+            category=None,
+            started_at=range_state["started_at"],
+            ended_at=range_state["ended_at"],
+            limit=500,
+        )
+        health = _build_sleep_health(events, range_state)
+        return render_template(
+            "health.html",
+            range_state=range_state,
+            health=health,
+        )
+
     @app.get("/api/live-audio")
     def live_audio():
         if live_audio_buffer is None:
@@ -815,6 +846,13 @@ def create_app(
         level_dbfs = stats["level_dbfs"]
         min_dbfs = stats["min_dbfs"]
         max_dbfs = stats["max_dbfs"]
+        snapshot = status.snapshot()
+        if level_dbfs is None:
+            level_dbfs = snapshot.get("last_frame_dbfs")
+        if min_dbfs is None:
+            min_dbfs = snapshot.get("last_frame_min_dbfs", level_dbfs)
+        if max_dbfs is None:
+            max_dbfs = snapshot.get("last_frame_max_dbfs", level_dbfs)
         cfg = current_config()
         return jsonify(
             {
@@ -878,6 +916,20 @@ def create_app(
             capture_device_options=_capture_device_options(cfg),
         )
 
+    @app.post("/settings/restart")
+    def settings_restart():
+        _schedule_audio_monitor_restart()
+        message = "Restart aplikacji audio-monitor został zaplanowany."
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.accept_mimetypes.best == "application/json":
+            return jsonify({"message": message, "service": "audio-monitor"})
+        return render_template(
+            "settings.html",
+            config=current_config(),
+            message=message,
+            settings_values=_settings_values(current_config()),
+            capture_device_options=_capture_device_options(current_config()),
+        )
+
     @app.get("/clips/<int:event_id>")
     def clip_audio(event_id: int):
         event = repository.get_event(event_id)
@@ -927,6 +979,85 @@ def _build_chart(
         "counts": counts,
         "min_value": round(min_value, 1),
         "max_value": round(max_value, 1),
+    }
+
+
+def _build_sleep_health(events: list[dict[str, object]], range_state: dict[str, object]) -> dict[str, object]:
+    parsed: list[dict[str, object]] = []
+    for row in events:
+        summary_raw = row.get("summary_json")
+        if not summary_raw:
+            continue
+        try:
+            summary = json.loads(str(summary_raw))
+        except json.JSONDecodeError:
+            continue
+        score, reasons = _score_snore_candidate(summary)
+        parsed.append(
+            {
+                "id": int(row["id"]),
+                "started_at": str(row["started_at"]),
+                "ended_at": str(row["ended_at"]),
+                "duration_seconds": float(row["duration_seconds"]),
+                "category": str(row["category"]),
+                "peak_dbfs": float(row["peak_dbfs"]),
+                "confidence": float(row["confidence"]),
+                "summary": summary,
+                "snore_score": score,
+                "snore_reasons": reasons,
+                "event_url": url_for("event_details", event_id=row["id"]),
+            }
+        )
+
+    candidates = [row for row in parsed if row["snore_score"] >= 0.55]
+    candidates.sort(key=lambda item: (float(item["snore_score"]), str(item["started_at"])))
+    candidates.reverse()
+
+    span_seconds = _range_seconds(range_state["started_at"], range_state["ended_at"])
+    span_hours = max(span_seconds / 3600.0, 1e-6)
+    candidate_durations = [float(item["duration_seconds"]) for item in candidates]
+    candidate_starts = [datetime.fromisoformat(str(item["started_at"])) for item in sorted(candidates, key=lambda item: str(item["started_at"]))]
+    gaps = [
+        (later - earlier).total_seconds()
+        for earlier, later in zip(candidate_starts, candidate_starts[1:], strict=False)
+    ]
+    if not gaps and len(candidate_starts) == 1:
+        gaps = []
+
+    snore_index = len(candidates) / span_hours
+    snore_burden_seconds = sum(candidate_durations)
+    burden_percent = (snore_burden_seconds / span_seconds * 100.0) if span_seconds else 0.0
+    mean_score = sum(float(item["snore_score"]) for item in candidates) / len(candidates) if candidates else 0.0
+    mean_peak = sum(float(item["peak_dbfs"]) for item in candidates) / len(candidates) if candidates else None
+    mean_duration = sum(candidate_durations) / len(candidate_durations) if candidate_durations else None
+    mean_gap = sum(gaps) / len(gaps) if gaps else None
+    max_gap = max(gaps) if gaps else None
+    long_pause_count = sum(1 for gap in gaps if gap >= 15.0)
+    gap_cv = (float(np.std(np.array(gaps, dtype=np.float32)) / np.mean(np.array(gaps, dtype=np.float32))) if len(gaps) >= 2 and np.mean(np.array(gaps, dtype=np.float32)) else None)
+    apnea_risk = _sleep_risk_score(snore_index, long_pause_count, max_gap, gap_cv, mean_score)
+    snore_gauge_width = min(max(snore_index * 4.0, 0.0), 100.0)
+    apnea_risk_width = min(max(apnea_risk, 0.0), 100.0)
+
+    return {
+        "summary": {
+            "event_count": len(events),
+            "candidate_count": len(candidates),
+            "snore_burden_seconds": snore_burden_seconds,
+            "burden_percent": burden_percent,
+            "snore_index_per_hour": snore_index,
+            "mean_score": mean_score,
+            "mean_peak_dbfs": mean_peak,
+            "mean_duration_seconds": mean_duration,
+            "mean_gap_seconds": mean_gap,
+            "max_gap_seconds": max_gap,
+            "gap_cv": gap_cv,
+            "long_pause_count": long_pause_count,
+            "apnea_risk_score": apnea_risk,
+            "snore_gauge_width": snore_gauge_width,
+            "apnea_risk_width": apnea_risk_width,
+            "apnea_risk_label": _sleep_risk_label(apnea_risk, len(candidates)),
+        },
+        "candidates": candidates[:40],
     }
 
 
@@ -1085,6 +1216,87 @@ def _format_audio_level(value: float | int | None, audio: AudioConfig, decimals:
     return f"{calibrated:.{decimals}f} {_audio_level_unit(audio)}"
 
 
+def _range_seconds(started_at: str, ended_at: str) -> float:
+    try:
+        start = datetime.fromisoformat(started_at)
+        end = datetime.fromisoformat(ended_at)
+    except ValueError:
+        return 0.0
+    return max((end - start).total_seconds(), 0.0)
+
+
+def _score_snore_candidate(summary: dict[str, object]) -> tuple[float, list[str]]:
+    duration_seconds = float(summary.get("duration_seconds") or 0.0)
+    peak_dbfs = float(summary.get("peak_dbfs") or -120.0)
+    mean_dbfs = float(summary.get("mean_dbfs") or -120.0)
+    dominant_freq_hz = float(summary.get("dominant_freq_hz") or 0.0)
+    low_band_ratio = float(summary.get("low_band_ratio") or 0.0)
+    mid_band_ratio = float(summary.get("mid_band_ratio") or 0.0)
+    mean_flux = float(summary.get("mean_flux") or 0.0)
+    mean_flatness = float(summary.get("mean_flatness") or 1.0)
+    rms_modulation_depth = float(summary.get("rms_modulation_depth") or 0.0)
+    dominant_modulation_hz = float(summary.get("dominant_modulation_hz") or 0.0)
+
+    score = 0.0
+    reasons: list[str] = []
+
+    if 0.35 <= duration_seconds <= 8.0:
+        score += 0.20
+        reasons.append("krótki epizod")
+    if 90.0 <= dominant_freq_hz <= 1400.0:
+        score += 0.18
+        reasons.append("zakres częstotliwości")
+    if low_band_ratio + mid_band_ratio >= 0.55:
+        score += 0.22
+        reasons.append("nisko-średnie pasmo")
+    if mean_flatness <= 0.55:
+        score += 0.16
+        reasons.append("tonalny charakter")
+    if -55.0 <= mean_dbfs <= -15.0:
+        score += 0.10
+        reasons.append("typowa głośność")
+    if 0.01 <= mean_flux <= 0.65:
+        score += 0.06
+    if rms_modulation_depth >= 0.08:
+        score += 0.05
+    if dominant_modulation_hz >= 0.6:
+        score += 0.03
+    if peak_dbfs >= -50.0:
+        score += 0.02
+
+    return min(score, 1.0), reasons
+
+
+def _sleep_risk_score(
+    snore_index_per_hour: float,
+    long_pause_count: int,
+    max_gap_seconds: float | None,
+    gap_cv: float | None,
+    mean_score: float,
+) -> float:
+    score = 0.0
+    score += min(snore_index_per_hour / 25.0, 1.0) * 35.0
+    score += min(long_pause_count / 6.0, 1.0) * 25.0
+    if max_gap_seconds is not None:
+        score += min(max_gap_seconds / 45.0, 1.0) * 20.0
+    if gap_cv is not None:
+        score += min(gap_cv / 1.2, 1.0) * 10.0
+    score += min(mean_score, 1.0) * 10.0
+    return max(0.0, min(score, 100.0))
+
+
+def _sleep_risk_label(score: float, candidate_count: int) -> str:
+    if candidate_count < 4:
+        return "Za mało danych"
+    if score < 30.0:
+        return "Niskie ryzyko"
+    if score < 55.0:
+        return "Obserwuj"
+    if score < 75.0:
+        return "Podwyższone ryzyko"
+    return "Wysokie ryzyko"
+
+
 def _capture_device_options(config: AppConfig) -> list[dict[str, str]]:
     options = [{"value": "", "label": "Automatyczny wybór"}]
     try:
@@ -1134,6 +1346,7 @@ def _settings_values(config: AppConfig) -> dict[str, object]:
         "classifier.yamnet_max_analysis_seconds": config.classifier.yamnet_max_analysis_seconds,
         "classifier.yamnet_max_windows": config.classifier.yamnet_max_windows,
         "classifier.yamnet_min_category_score": config.classifier.yamnet_min_category_score,
+        "classifier.min_persist_confidence": config.classifier.min_persist_confidence,
         "classifier.yamnet_top_k": config.classifier.yamnet_top_k,
         "storage.keep_clips": "true" if config.storage.keep_clips else "false",
         "storage.clip_max_megabytes": config.storage.clip_max_megabytes,
@@ -1223,6 +1436,7 @@ def _build_config_from_form(config: AppConfig, form) -> AppConfig:
             yamnet_max_analysis_seconds=_float_from_form(form, "classifier.yamnet_max_analysis_seconds"),
             yamnet_max_windows=_int_from_form(form, "classifier.yamnet_max_windows"),
             yamnet_min_category_score=_float_from_form(form, "classifier.yamnet_min_category_score"),
+            min_persist_confidence=_float_from_form(form, "classifier.min_persist_confidence"),
             yamnet_top_k=_int_from_form(form, "classifier.yamnet_top_k"),
         ),
         storage=StorageConfig(
@@ -1268,6 +1482,16 @@ def _float_from_form(form, key: str) -> float:
 
 def _bool_from_form(form, key: str) -> bool:
     return form.get(key, "false") == "true"
+
+
+def _schedule_audio_monitor_restart() -> None:
+    timer = threading.Timer(1.0, _restart_audio_monitor_service)
+    timer.daemon = True
+    timer.start()
+
+
+def _restart_audio_monitor_service() -> None:
+    os._exit(1)
 
 
 def _describe_classifier_decision(decision: dict[str, object]) -> dict[str, object]:

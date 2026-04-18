@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% from "_range_controls.html" import render_range_controls %}
+{% block title %}Zdrowie{% endblock %}
+{% block content %}
+  {{ render_range_controls('sleep_health', range_state) }}
+
+  <section class="card">
+    <p class="label">Analiza audio snu</p>
+    <h2>Chrapanie i wzorzec przerw</h2>
+    <p>To jest wskaźnik pomocniczy, nie diagnoza medyczna. Sekcja pokazuje kandydaty na chrapanie i prosty sygnał ryzyka, oparty o cechy akustyczne z nocnych zdarzeń.</p>
+  </section>
+
+  <section class="grid three">
+    <article class="card metric">
+      <p class="label">Kandydaci na chrapanie</p>
+      <h2>{{ health.summary.candidate_count }}</h2>
+      <div class="level-gauge">
+        <div class="level-gauge-track">
+          <div class="level-gauge-range" style="left: 0%; width: {{ '%.0f'|format(health.summary.snore_gauge_width) }}%;"></div>
+        </div>
+        <div class="level-gauge-bounds">
+          <span>{{ '%.1f'|format(health.summary.snore_index_per_hour) }} / h</span>
+          <span>{{ '%.1f'|format(health.summary.burden_percent) }}%</span>
+        </div>
+      </div>
+    </article>
+    <article class="card metric">
+      <p class="label">Wskaźnik ryzyka bezdechu</p>
+      <h2>{{ health.summary.apnea_risk_label }}</h2>
+      <div class="level-gauge">
+        <div class="level-gauge-track">
+          <div class="level-gauge-range" style="left: 0%; width: {{ '%.0f'|format(health.summary.apnea_risk_width) }}%;"></div>
+        </div>
+        <div class="level-gauge-bounds">
+          <span>{{ '%.0f'|format(health.summary.apnea_risk_score) }} / 100</span>
+          <span>{{ health.summary.long_pause_count }} długich przerw</span>
+        </div>
+      </div>
+    </article>
+    <article class="card metric">
+      <p class="label">Łączny czas chrapania</p>
+      <h2>{{ '%.1f'|format(health.summary.snore_burden_seconds / 60.0) }} min</h2>
+      <p>{{ '%.2f'|format(health.summary.mean_score) }} średni score kandydata</p>
+    </article>
+  </section>
+
+  <section class="grid two">
+    <article class="card">
+      <h3>Jak chrapie</h3>
+      <ul class="plain-list">
+        <li><span>Średni pik</span><strong>{{ format_dbfs(health.summary.mean_peak_dbfs) if health.summary.mean_peak_dbfs is not none else 'brak danych' }}</strong></li>
+        <li><span>Średni czas</span><strong>{{ '%.1f'|format(health.summary.mean_duration_seconds) if health.summary.mean_duration_seconds is not none else 'brak danych' }} s</strong></li>
+        <li><span>Średni odstęp</span><strong>{{ '%.1f'|format(health.summary.mean_gap_seconds) if health.summary.mean_gap_seconds is not none else 'brak danych' }} s</strong></li>
+        <li><span>Najdłuższa przerwa</span><strong>{{ '%.1f'|format(health.summary.max_gap_seconds) if health.summary.max_gap_seconds is not none else 'brak danych' }} s</strong></li>
+      </ul>
+    </article>
+
+    <article class="card">
+      <h3>Regularność</h3>
+      <ul class="plain-list">
+        <li><span>Snore index</span><strong>{{ '%.1f'|format(health.summary.snore_index_per_hour) }} / h</strong></li>
+        <li><span>Wariancja przerw</span><strong>{{ '%.2f'|format(health.summary.gap_cv) if health.summary.gap_cv is not none else 'brak danych' }}</strong></li>
+        <li><span>Liczba przerw &gt; 15 s</span><strong>{{ health.summary.long_pause_count }}</strong></li>
+        <li><span>Eventy w zakresie</span><strong>{{ health.summary.event_count }}</strong></li>
+      </ul>
+    </article>
+  </section>
+
+  <section class="card">
+    <h3>Najbardziej prawdopodobne epizody chrapania</h3>
+    {% if health.candidates %}
+      <table class="events-table">
+        <thead>
+          <tr>
+            <th>Czas</th>
+            <th>Czas trwania</th>
+            <th>Score</th>
+            <th>Pik</th>
+            <th>Dominanta</th>
+            <th>Powody</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in health.candidates %}
+            <tr>
+              <td><a href="{{ row.event_url }}">{{ row.started_at }}</a></td>
+              <td>{{ '%.1f'|format(row.duration_seconds) }} s</td>
+              <td>{{ '%.2f'|format(row.snore_score) }}</td>
+              <td>{{ format_dbfs(row.peak_dbfs) }}</td>
+              <td>{{ '%.0f'|format(row.summary.dominant_freq_hz) }} Hz</td>
+              <td>{{ row.snore_reasons|join(', ') if row.snore_reasons else 'brak' }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p>Brak kandydatów na chrapanie w wybranym zakresie.</p>
+    {% endif %}
+  </section>
+{% endblock %}

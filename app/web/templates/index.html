@@ -279,6 +279,7 @@
           padding,
           plotWidth,
           plotHeight,
+          barMeta,
           width,
           height,
         });
@@ -297,6 +298,7 @@
         const barBase = height - padding.bottom;
         const barMaxHeight = Math.max(18, plotHeight * 0.32);
         const barWidth = Math.max(4, plotWidth / Math.max(values.length * 1.8, 6));
+        const barMeta = [];
         counts.forEach((count, index) => {
           const numericCount = Number(count) || 0;
           if (numericCount <= 0) {
@@ -309,6 +311,7 @@
           ctx.fillRect(x - barWidth / 2, top, barWidth, barHeight);
           ctx.fillStyle = "rgba(126, 203, 255, 0.16)";
           ctx.fillRect(x - barWidth / 2 + 1, top + 1, Math.max(1, barWidth - 2), Math.max(0, barHeight - 2));
+          barMeta.push({ index, x, top, bottom: barBase, width: barWidth, count: numericCount });
         });
 
         const gradient = ctx.createLinearGradient(padding.left, padding.top, width - padding.right, padding.top + plotHeight);
@@ -378,15 +381,28 @@
 
         const rect = canvas.getBoundingClientRect();
         const relativeX = Math.min(Math.max(event.clientX - rect.left, state.padding.left), rect.width - state.padding.right);
+        const relativeY = event.clientY - rect.top;
+        const hoveredBar = (state.barMeta || []).find((bar) => {
+          const halfWidth = bar.width / 2;
+          return (
+            relativeX >= bar.x - halfWidth &&
+            relativeX <= bar.x + halfWidth &&
+            relativeY >= bar.top &&
+            relativeY <= bar.bottom
+          );
+        });
         const ratio = (relativeX - state.padding.left) / Math.max(state.plotWidth, 1);
         const index = Math.min(state.values.length - 1, Math.max(0, Math.round(ratio * Math.max(state.values.length - 1, 1))));
-        const x = positionForIndex(index, state.values.length, state.plotWidth, state.padding.left);
-        const value = Number(state.values[index]);
+        const activeIndex = hoveredBar ? hoveredBar.index : index;
+        const x = positionForIndex(activeIndex, state.values.length, state.plotWidth, state.padding.left);
+        const value = Number(state.values[activeIndex]);
         const normalized = (value - state.minValue) / state.span;
         const y = state.padding.top + state.plotHeight - normalized * state.plotHeight;
 
         tooltip.hidden = false;
-        tooltip.textContent = formatTooltip(state.labels[index], value);
+        tooltip.textContent = hoveredBar
+          ? `${state.labels[activeIndex]} • ${formatDb(value)}\nZdarzenia: ${hoveredBar.count}`
+          : formatTooltip(state.labels[activeIndex], value);
         tooltip.style.left = `${x}px`;
         tooltip.style.top = `${Math.max(y - 14, 8)}px`;
       };

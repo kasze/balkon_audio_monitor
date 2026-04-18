@@ -85,6 +85,7 @@ class ClassifierConfig:
     backend: str = "yamnet"
     reuse_similarity_threshold: float = 0.992
     reuse_confidence_threshold: float = 0.60
+    min_persist_confidence: float = 0.50
     similarity_cache_limit: int = 200
     similarity_lookback_days: int = 30
     yamnet_model_path: Path = Path("models/yamnet.tflite")
@@ -177,6 +178,7 @@ def load_config(path: str | Path | None = None) -> AppConfig:
             backend=classifier["backend"],
             reuse_similarity_threshold=float(classifier["reuse_similarity_threshold"]),
             reuse_confidence_threshold=float(classifier["reuse_confidence_threshold"]),
+            min_persist_confidence=float(classifier.get("min_persist_confidence", 0.50)),
             similarity_cache_limit=int(classifier["similarity_cache_limit"]),
             similarity_lookback_days=int(classifier["similarity_lookback_days"]),
             yamnet_model_path=_resolve_path(base_dir, classifier["yamnet_model_path"]),
@@ -240,6 +242,7 @@ def save_config(config: AppConfig, path: str | Path | None = None) -> Path:
             "backend": config.classifier.backend,
             "reuse_similarity_threshold": float(config.classifier.reuse_similarity_threshold),
             "reuse_confidence_threshold": float(config.classifier.reuse_confidence_threshold),
+            "min_persist_confidence": float(config.classifier.min_persist_confidence),
             "similarity_cache_limit": int(config.classifier.similarity_cache_limit),
             "similarity_lookback_days": int(config.classifier.similarity_lookback_days),
             "yamnet_model_path": _serialize_path(config.base_dir, config.classifier.yamnet_model_path),

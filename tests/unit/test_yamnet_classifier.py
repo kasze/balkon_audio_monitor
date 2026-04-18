@@ -193,3 +193,31 @@ def test_pipeline_skips_discarded_events(tmp_path) -> None:
     pipeline._persist_event(make_event())
 
     assert repository.recent_events_count() == 0
+
+
+def test_pipeline_skips_low_confidence_events(tmp_path) -> None:
+    database_path = tmp_path / "audio_monitor.sqlite3"
+    repository = SQLiteRepository(database_path)
+    repository.initialize()
+    config = AppConfig(base_dir=tmp_path, storage=StorageConfig(database_path=database_path, clip_dir=tmp_path / "clips"))
+    pipeline = AudioPipeline(config, repository, RuntimeStatus())
+
+    class FakeClassifier:
+        def classify(self, _event):
+            return ClassificationOutcome(
+                decision=ClassifierDecision(
+                    "yamnet_litert",
+                    "1",
+                    "street_background",
+                    0.49,
+                    {"resolved_label": "Traffic noise, roadway noise"},
+                )
+            )
+
+        def remember(self, _outcome, _event_id):
+            raise AssertionError("ignored events must not be remembered")
+
+    pipeline.classifier = FakeClassifier()  # type: ignore[assignment]
+    pipeline._persist_event(make_event())
+
+    assert repository.recent_events_count() == 0

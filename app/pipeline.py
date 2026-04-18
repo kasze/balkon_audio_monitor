@@ -33,6 +33,9 @@ class RuntimeStatus:
             "audio_device_mode": None,
             "audio_device_name": None,
             "last_frame_at": None,
+            "last_frame_dbfs": None,
+            "last_frame_min_dbfs": None,
+            "last_frame_max_dbfs": None,
             "last_error": None,
             "events_written": 0,
             "intervals_written": 0,
@@ -254,6 +257,9 @@ class AudioPipeline:
             worker_state="running",
             audio_available=True,
             last_frame_at=frame.started_at.isoformat(),
+            last_frame_dbfs=features.dbfs,
+            last_frame_min_dbfs=features.dbfs,
+            last_frame_max_dbfs=features.dbfs,
             last_error=None,
             source_name=frame.source_name,
         )
@@ -282,6 +288,15 @@ class AudioPipeline:
                 "Discarded event duration=%.1fs reason=%s",
                 completed.summary.duration_seconds,
                 decision.details.get("resolved_label") if isinstance(decision.details, dict) else "discarded_label",
+            )
+            return
+        if decision.confidence < self.config.classifier.min_persist_confidence:
+            LOGGER.info(
+                "Ignored low-confidence event category=%s confidence=%.2f threshold=%.2f duration=%.1fs",
+                decision.category,
+                decision.confidence,
+                self.config.classifier.min_persist_confidence,
+                completed.summary.duration_seconds,
             )
             return
         clip = None

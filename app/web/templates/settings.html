@@ -1,13 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Ustawienia{% endblock %}
 {% block content %}
-  <section class="card">
-    <p class="label">Konfiguracja</p>
-    <h2>Ustawienia</h2>
-    <p>Zmiany zapisują się do pliku konfiguracyjnego aplikacji. Parametry przechwytywania i klasyfikacji zwykle wymagają restartu usługi. Skala prezentacji może pokazywać surowe <strong>dBFS</strong> albo szacowane <strong>dBA</strong> po kalibracji.</p>
-    <p class="settings-banner" data-settings-banner {% if not message %}hidden{% endif %}>{{ message }}</p>
-  </section>
-
   <form method="post" class="settings-form" data-autosave-settings>
     {% for section in settings_sections %}
       <section class="card settings-card">
@@ -88,7 +81,10 @@
 
     <section class="card settings-card settings-actions">
       <p>Część ustawień panelu WWW odświeży się od razu. Audio, detekcja i klasyfikacja zwykle wymagają restartu usługi.</p>
-      <span class="autosave-status" data-autosave-status>Zmiany zapisują się automatycznie.</span>
+      <div class="settings-actions-controls">
+        <button type="button" class="secondary-button" data-restart-audio>Restart aplikacji</button>
+        <span class="autosave-status" data-autosave-status>Zmiany zapisują się automatycznie.</span>
+      </div>
     </section>
   </form>
 
@@ -96,14 +92,8 @@
     (() => {
       const form = document.querySelector("[data-autosave-settings]");
       const status = document.querySelector("[data-autosave-status]");
-      const banner = document.querySelector("[data-settings-banner]");
+      const restartButton = document.querySelector("[data-restart-audio]");
       let submitTimer;
-
-      const updateMessage = (text) => {
-        if (!banner) return;
-        banner.hidden = !text;
-        banner.textContent = text || "";
-      };
 
       const submitSettings = async () => {
         if (!form) return;
@@ -121,7 +111,6 @@
             throw new Error(`HTTP ${response.status}`);
           }
           const payload = await response.json();
-          updateMessage(payload.message || "Ustawienia zapisane.");
           if (status) status.textContent = "Zapisano";
         } catch (_error) {
           if (status) status.textContent = "Nie udało się zapisać";
@@ -154,6 +143,31 @@
         });
         form.querySelectorAll("input:not([type='range']), select").forEach((field) => {
           field.addEventListener("change", () => scheduleSubmit());
+        });
+      }
+
+      if (restartButton) {
+        restartButton.addEventListener("click", async () => {
+          restartButton.disabled = true;
+          if (status) status.textContent = "Restartowanie...";
+          try {
+            const response = await fetch("/settings/restart", {
+              method: "POST",
+              headers: {
+                "X-Requested-With": "XMLHttpRequest",
+                Accept: "application/json",
+              },
+            });
+            if (!response.ok) {
+              throw new Error(`HTTP ${response.status}`);
+            }
+            const payload = await response.json();
+            if (status) status.textContent = "Restart zaplanowany";
+          } catch (_error) {
+            if (status) status.textContent = "Nie udało się uruchomić restartu";
+          } finally {
+            restartButton.disabled = false;
+          }
         });
       }
     })();

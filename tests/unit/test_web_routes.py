@@ -12,7 +12,13 @@ from app.storage.database import SQLiteRepository
 from app.web.app import create_app
 
 
-def _build_event(category: str, started_at: datetime, *, duration_seconds: float = 4.0) -> CompletedEvent:
+def _build_event(
+    category: str,
+    started_at: datetime,
+    *,
+    duration_seconds: float = 4.0,
+    **summary_overrides: float,
+) -> CompletedEvent:
     summary = EventSummary(
         source_name="test",
         started_at=started_at,
@@ -32,6 +38,8 @@ def _build_event(category: str, started_at: datetime, *, duration_seconds: float
         rms_modulation_depth=0.2,
         dominant_modulation_hz=0.7,
     )
+    for key, value in summary_overrides.items():
+        setattr(summary, key, value)
     return CompletedEvent(summary=summary, clip_samples=np.array([], dtype=np.float32), sample_rate=16_000)
 
 
@@ -432,6 +440,87 @@ def test_dashboard_shows_live_audio_level(tmp_path: Path) -> None:
     assert payload["raw_min_label"].endswith("dBFS")
 
 
+def test_health_page_shows_sleep_insights(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "audio_monitor.sqlite3")
+    repository.initialize()
+    now = datetime(2026, 4, 18, 23, 15).astimezone().replace(microsecond=0)
+
+    snore_kwargs = {
+        "peak_dbfs": -28.0,
+        "mean_dbfs": -34.0,
+        "mean_centroid_hz": 410.0,
+        "dominant_freq_hz": 260.0,
+        "dominant_span_hz": 110.0,
+        "low_band_ratio": 0.38,
+        "mid_band_ratio": 0.34,
+        "high_band_ratio": 0.28,
+        "mean_flux": 0.18,
+        "mean_flatness": 0.22,
+        "rms_modulation_depth": 0.14,
+        "dominant_modulation_hz": 1.1,
+    }
+    repository.insert_event(
+        _build_event("street_background", now, duration_seconds=2.4, **snore_kwargs),
+        ClassifierDecision("yamnet_litert", "1", "street_background", 0.7, {}),
+        None,
+    )
+    repository.insert_event(
+        _build_event("street_background", now + timedelta(minutes=2), duration_seconds=2.1, **snore_kwargs),
+        ClassifierDecision("yamnet_litert", "1", "street_background", 0.7, {}),
+        None,
+    )
+    repository.insert_event(
+        _build_event("street_background", now + timedelta(minutes=4), duration_seconds=2.8, **snore_kwargs),
+        ClassifierDecision("yamnet_litert", "1", "street_background", 0.7, {}),
+        None,
+    )
+    repository.insert_event(
+        _build_event("street_background", now + timedelta(minutes=6), duration_seconds=2.5, **snore_kwargs),
+        ClassifierDecision("yamnet_litert", "1", "street_background", 0.7, {}),
+        None,
+    )
+    repository.insert_event(
+        _build_event(
+            "street_background",
+            now + timedelta(minutes=8),
+            duration_seconds=6.0,
+            peak_dbfs=-60.0,
+            mean_dbfs=-66.0,
+            mean_centroid_hz=2200.0,
+            dominant_freq_hz=2500.0,
+            dominant_span_hz=1200.0,
+            low_band_ratio=0.08,
+            mid_band_ratio=0.12,
+            high_band_ratio=0.8,
+            mean_flux=0.02,
+            mean_flatness=0.85,
+            rms_modulation_depth=0.01,
+            dominant_modulation_hz=0.2,
+        ),
+        ClassifierDecision("yamnet_litert", "1", "street_background", 0.7, {}),
+        None,
+    )
+
+    app = create_app(
+        repository,
+        RuntimeStatus(),
+        AppConfig(
+            base_dir=tmp_path,
+            storage=StorageConfig(database_path=repository.database_path, clip_dir=tmp_path / "clips"),
+        ),
+    )
+    client = app.test_client()
+
+    response = client.get("/zdrowie?period=day&date=2026-04-18")
+
+    assert response.status_code == 200
+    html = response.get_data(as_text=True)
+    assert "Chrapanie i wzorzec przerw" in html
+    assert "Kandydaci na chrapanie" in html
+    assert "Wskaźnik ryzyka bezdechu" in html
+    assert "Najbardziej prawdopodobne epizody chrapania" in html
+
+
 def test_settings_page_renders_and_saves_config(tmp_path: Path) -> None:
     repository = SQLiteRepository(tmp_path / "audio_monitor.sqlite3")
     repository.initialize()
@@ -490,6 +579,7 @@ def test_settings_page_renders_and_saves_config(tmp_path: Path) -> None:
             "classifier.yamnet_max_analysis_seconds": "12.0",
             "classifier.yamnet_max_windows": "24",
             "classifier.yamnet_min_category_score": "0.08",
+            "classifier.min_persist_confidence": "0.50",
             "classifier.yamnet_top_k": "8",
             "storage.keep_clips": "true",
             "storage.clip_max_megabytes": "512",
@@ -513,6 +603,7 @@ def test_settings_page_renders_and_saves_config(tmp_path: Path) -> None:
     assert saved.audio.level_display_mode == "calibrated"
     assert round(saved.audio.calibration_slope, 2) == 2.88
     assert round(saved.audio.calibration_offset_db, 1) == 138.3
+    assert saved.classifier.min_persist_confidence == 0.5
 
 
 def test_settings_page_returns_json_for_ajax_save(tmp_path: Path) -> None:
@@ -566,6 +657,7 @@ def test_settings_page_returns_json_for_ajax_save(tmp_path: Path) -> None:
             "classifier.yamnet_max_analysis_seconds": "12.0",
             "classifier.yamnet_max_windows": "24",
             "classifier.yamnet_min_category_score": "0.08",
+            "classifier.min_persist_confidence": "0.50",
             "classifier.yamnet_top_k": "8",
             "storage.keep_clips": "true",
             "storage.clip_max_megabytes": "512",
@@ -585,3 +677,68 @@ def test_settings_page_returns_json_for_ajax_save(tmp_path: Path) -> None:
     assert response.status_code == 200
     payload = response.get_json()
     assert "Ustawienia zapisane" in payload["message"]
+
+
+def test_settings_restart_returns_json(tmp_path: Path, monkeypatch) -> None:
+    repository = SQLiteRepository(tmp_path / "audio_monitor.sqlite3")
+    repository.initialize()
+    app = create_app(
+        repository,
+        RuntimeStatus(),
+        AppConfig(
+            base_dir=tmp_path,
+            storage=StorageConfig(database_path=repository.database_path, clip_dir=tmp_path / "clips"),
+            classifier=ClassifierConfig(
+                yamnet_model_path=tmp_path / "models" / "yamnet.tflite",
+                yamnet_class_map_path=tmp_path / "models" / "yamnet_class_map.csv",
+            ),
+        ),
+    )
+    client = app.test_client()
+    called = []
+
+    def fake_schedule() -> None:
+        called.append(True)
+
+    monkeypatch.setattr("app.web.app._schedule_audio_monitor_restart", fake_schedule)
+
+    response = client.post(
+        "/settings/restart",
+        headers={"X-Requested-With": "XMLHttpRequest", "Accept": "application/json"},
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert "Restart aplikacji audio-monitor" in payload["message"]
+    assert called == [True]
+
+
+def test_live_level_uses_last_frame_fallback(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "audio_monitor.sqlite3")
+    repository.initialize()
+    status = RuntimeStatus()
+    status.update(
+        audio_available=True,
+        last_frame_dbfs=-33.0,
+        last_frame_min_dbfs=-34.0,
+        last_frame_max_dbfs=-31.0,
+    )
+    app = create_app(
+        repository,
+        status,
+        AppConfig(
+            base_dir=tmp_path,
+            storage=StorageConfig(database_path=repository.database_path, clip_dir=tmp_path / "clips"),
+        ),
+        live_audio_buffer=LiveAudioBuffer(16_000),
+    )
+    client = app.test_client()
+
+    response = client.get("/api/live-level")
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["raw_level_dbfs"] == -33.0
+    assert payload["raw_min_dbfs"] == -34.0
+    assert payload["raw_max_dbfs"] == -31.0
+    assert payload["raw_level_label"].endswith("dBFS")

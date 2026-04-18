@@ -31,6 +31,7 @@ classifier:
   backend: yamnet
   reuse_similarity_threshold: 0.992
   reuse_confidence_threshold: 0.60
+  min_persist_confidence: 0.50
   similarity_cache_limit: 200
   similarity_lookback_days: 30
   yamnet_model_path: models/yamnet.tflite
