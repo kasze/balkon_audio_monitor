@@ -212,13 +212,14 @@
         const padding = { top: 16, right: 72, bottom: 40, left: 12 };
         const plotWidth = width - padding.left - padding.right;
         const plotHeight = height - padding.top - padding.bottom;
-        const offsetDb = Number(canvas.dataset.offset || 0);
-        const minValue = Number(canvas.dataset.min || Math.min(...values));
-        const maxValue = Number(canvas.dataset.max || Math.max(...values));
+        const offsetDb = Number(canvas.dataset.offset || 100);
+        const displayValues = values.map((value) => normalizeDb(value, 1, offsetDb));
+        const minValue = normalizeDb(Number(canvas.dataset.min || Math.min(...values)), 1, offsetDb);
+        const maxValue = normalizeDb(Number(canvas.dataset.max || Math.max(...values)), 1, offsetDb);
         const span = Math.max(maxValue - minValue, 1);
         chartState.set(canvas, {
           labels,
-          values,
+          values: displayValues,
           minValue,
           maxValue,
           span,
@@ -250,7 +251,7 @@
         ctx.lineJoin = "round";
         ctx.lineCap = "round";
         ctx.beginPath();
-        values.forEach((value, index) => {
+        displayValues.forEach((value, index) => {
           const x = positionForIndex(index, values.length, plotWidth, padding.left);
           const normalized = (value - minValue) / span;
           const y = padding.top + plotHeight - normalized * plotHeight;
@@ -315,7 +316,7 @@
         const y = state.padding.top + state.plotHeight - normalized * state.plotHeight;
 
         tooltip.hidden = false;
-        tooltip.textContent = formatTooltip(state.labels[index], value + state.offsetDb);
+        tooltip.textContent = formatTooltip(state.labels[index], value);
         tooltip.style.left = `${x}px`;
         tooltip.style.top = `${Math.max(y - 14, 8)}px`;
       };
