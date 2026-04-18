@@ -294,8 +294,8 @@
         ctx.font = '600 12px "SF Pro Text", "SF Pro Display", "Helvetica Neue", "Segoe UI", sans-serif';
         ctx.textAlign = "left";
         ctx.textBaseline = "middle";
-        ctx.fillText(formatDb(maxValue, 1, offsetDb), width - padding.right + 10, padding.top + 2);
-        ctx.fillText(formatDb(minValue, 1, offsetDb), width - padding.right + 10, padding.top + plotHeight - 2);
+        ctx.fillText(formatDb(maxValue), width - padding.right + 10, padding.top + 2);
+        ctx.fillText(formatDb(minValue), width - padding.right + 10, padding.top + plotHeight - 2);
       };
 
       const showTooltip = (canvas, event) => {

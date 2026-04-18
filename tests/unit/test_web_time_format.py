@@ -66,6 +66,10 @@ def test_format_dbfs_applies_offset() -> None:
     assert _format_dbfs(-12.0, offset_db=100.0) == "88.0 dB"
 
 
+def test_format_dbfs_does_not_double_apply_offset_for_display_values() -> None:
+    assert _format_dbfs(72.0) == "72.0 dB"
+
+
 def test_format_chart_bucket_label_uses_full_timestamp_for_week_and_month() -> None:
     assert _format_chart_bucket_label("2026-04-18 12:30:00", "week") == "2026-04-18 12:30"
     assert _format_chart_bucket_label("2026-04-18 12:30:00", "month") == "2026-04-18 12:30"
