@@ -4,10 +4,8 @@
   <section class="card">
     <p class="label">Konfiguracja</p>
     <h2>Ustawienia</h2>
-    <p>Zmiany zapisują się do pliku konfiguracyjnego aplikacji. Parametry przechwytywania i klasyfikacji zwykle wymagają restartu usługi. Wartości prezentowane w interfejsie są pokazane jako <strong>dB</strong>, a progi silnika pozostają w <strong>dBFS</strong>.</p>
-    {% if message %}
-      <p class="settings-banner">{{ message }}</p>
-    {% endif %}
+    <p>Zmiany zapisują się do pliku konfiguracyjnego aplikacji. Parametry przechwytywania i klasyfikacji zwykle wymagają restartu usługi. Skala prezentacji może pokazywać surowe <strong>dBFS</strong> albo szacowane <strong>dBA</strong> po kalibracji.</p>
+    <p class="settings-banner" data-settings-banner {% if not message %}hidden{% endif %}>{{ message }}</p>
   </section>
 
   <form method="post" class="settings-form" data-autosave-settings>
@@ -98,13 +96,43 @@
     (() => {
       const form = document.querySelector("[data-autosave-settings]");
       const status = document.querySelector("[data-autosave-status]");
+      const banner = document.querySelector("[data-settings-banner]");
       let submitTimer;
+
+      const updateMessage = (text) => {
+        if (!banner) return;
+        banner.hidden = !text;
+        banner.textContent = text || "";
+      };
+
+      const submitSettings = async () => {
+        if (!form) return;
+        if (status) status.textContent = "Zapisywanie...";
+        try {
+          const response = await fetch(form.action || window.location.pathname, {
+            method: "POST",
+            body: new FormData(form),
+            headers: {
+              "X-Requested-With": "XMLHttpRequest",
+              Accept: "application/json",
+            },
+          });
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+          const payload = await response.json();
+          updateMessage(payload.message || "Ustawienia zapisane.");
+          if (status) status.textContent = "Zapisano";
+        } catch (_error) {
+          if (status) status.textContent = "Nie udało się zapisać";
+        }
+      };
 
       const scheduleSubmit = (delay = 80) => {
         if (!form) return;
         if (status) status.textContent = "Zapisywanie...";
         clearTimeout(submitTimer);
-        submitTimer = window.setTimeout(() => form.requestSubmit(), delay);
+        submitTimer = window.setTimeout(() => submitSettings(), delay);
       };
 
       document.querySelectorAll("input[type='range'][data-output]").forEach((input) => {
@@ -120,6 +148,10 @@
       });
 
       if (form) {
+        form.addEventListener("submit", (event) => {
+          event.preventDefault();
+          submitSettings();
+        });
         form.querySelectorAll("input:not([type='range']), select").forEach((field) => {
           field.addEventListener("change", () => scheduleSubmit());
         });

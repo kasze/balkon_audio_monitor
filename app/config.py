@@ -22,7 +22,9 @@ class AudioConfig:
     arecord_binary: str = "arecord"
     arecord_device: str | None = None
     retry_backoff_seconds: float = 5.0
-    db_offset_db: float = 100.0
+    level_display_mode: str = "calibrated"
+    calibration_slope: float = 2.88
+    calibration_offset_db: float = 138.3
 
 
 @dataclass(slots=True, frozen=True)
@@ -164,9 +166,11 @@ def load_config(path: str | Path | None = None) -> AppConfig:
 
     classifier = merged["classifier"]
     storage = merged["storage"]
+    merged_audio = dict(merged["audio"])
+    merged_audio.pop("db_offset_db", None)
     return AppConfig(
         base_dir=base_dir,
-        audio=AudioConfig(**merged["audio"]),
+        audio=AudioConfig(**merged_audio),
         detection=DetectionConfig(**merged["detection"]),
         aggregation=AggregationConfig(**merged["aggregation"]),
         classifier=ClassifierConfig(
@@ -210,7 +214,9 @@ def save_config(config: AppConfig, path: str | Path | None = None) -> Path:
             "arecord_binary": config.audio.arecord_binary,
             "arecord_device": config.audio.arecord_device,
             "retry_backoff_seconds": float(config.audio.retry_backoff_seconds),
-            "db_offset_db": float(config.audio.db_offset_db),
+            "level_display_mode": config.audio.level_display_mode,
+            "calibration_slope": float(config.audio.calibration_slope),
+            "calibration_offset_db": float(config.audio.calibration_offset_db),
         },
         "detection": {
             "initial_noise_floor_dbfs": float(config.detection.initial_noise_floor_dbfs),

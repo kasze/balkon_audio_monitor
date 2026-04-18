@@ -5,7 +5,9 @@ audio:
   arecord_binary: arecord
   arecord_device:
   retry_backoff_seconds: 5.0
-  db_offset_db: 100.0
+  level_display_mode: calibrated
+  calibration_slope: 2.88
+  calibration_offset_db: 138.3
 
 detection:
   initial_noise_floor_dbfs: -58.0

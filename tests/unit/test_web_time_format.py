@@ -10,10 +10,12 @@ from subprocess import CompletedProcess
 import pytest
 
 from app.config import AppConfig, StorageConfig
+from app.config import AudioConfig
 from app.web.app import (
     _describe_classifier_decision,
     _format_chart_bucket_label,
     _format_dbfs,
+    _format_audio_level,
     _format_local_timestamp,
     _format_uptime_seconds,
     _format_worker_state,
@@ -57,17 +59,16 @@ def test_format_local_timestamp_returns_original_on_parse_error() -> None:
 
 
 def test_format_dbfs_normalizes_negative_zero() -> None:
-    assert _format_dbfs(-0.00003) == "0.0 dB"
-    assert _format_dbfs(0.0) == "0.0 dB"
-    assert _format_dbfs(-12.34) == "-12.3 dB"
+    assert _format_dbfs(-0.00003) == "0.0 dBFS"
+    assert _format_dbfs(0.0) == "0.0 dBFS"
+    assert _format_dbfs(-12.34) == "-12.3 dBFS"
 
 
-def test_format_dbfs_applies_offset() -> None:
-    assert _format_dbfs(-12.0, offset_db=100.0) == "88.0 dB"
-
-
-def test_format_dbfs_does_not_double_apply_offset_for_display_values() -> None:
-    assert _format_dbfs(72.0) == "72.0 dB"
+def test_format_audio_level_uses_linear_calibration() -> None:
+    audio = AudioConfig(level_display_mode="calibrated", calibration_slope=2.88, calibration_offset_db=138.3)
+    assert _format_audio_level(-33.0, audio) == "43.3 dBA"
+    assert _format_audio_level(-32.0, audio) == "46.1 dBA"
+    assert _format_audio_level(-25.0, audio) == "66.3 dBA"
 
 
 def test_format_chart_bucket_label_uses_full_timestamp_for_week_and_month() -> None:

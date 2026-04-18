@@ -1,32 +1,43 @@
 {% extends "base.html" %}
-{% from "_chart_macros.html" import render_chart_card %}
+{% from "_chart_macros.html" import render_chart_card with context %}
 {% from "_range_controls.html" import render_range_controls %}
 {% block title %}Panel{% endblock %}
 {% block content %}
   {{ render_range_controls('index', range_state) }}
 
-  <section class="grid two">
+  <section class="grid three">
+    <article class="card metric">
+      <p class="label">Szacowane dBA</p>
+      <h2 data-live-calibrated-value>brak danych</h2>
+      <div class="level-gauge" data-live-calibrated-gauge aria-hidden="true">
+        <div class="level-gauge-track">
+          <div class="level-gauge-range"></div>
+          <div class="level-gauge-marker"></div>
+        </div>
+        <div class="level-gauge-bounds">
+          <span data-live-calibrated-min>Min: brak</span>
+          <span data-live-calibrated-max>Max: brak</span>
+        </div>
+      </div>
+    </article>
+    <article class="card metric">
+      <p class="label">Surowe dBFS</p>
+      <h2 data-live-raw-value>brak danych</h2>
+      <div class="level-gauge level-gauge-raw" data-live-raw-gauge aria-hidden="true">
+        <div class="level-gauge-track">
+          <div class="level-gauge-range"></div>
+          <div class="level-gauge-marker"></div>
+        </div>
+        <div class="level-gauge-bounds">
+          <span data-live-raw-min>Min: brak</span>
+          <span data-live-raw-max>Max: brak</span>
+        </div>
+      </div>
+    </article>
     <article class="card metric">
       <p class="label">{{ range_state.period_label }}</p>
       <h2>{{ range_state.title }}</h2>
       <p>Zdarzenia w zakresie: {{ dashboard.summary.event_count }}</p>
-    </article>
-    <article class="card metric">
-      <p class="label">Poziom tła</p>
-      <h2>
-        {% if dashboard.summary.avg_dbfs is not none %}
-          {{ format_dbfs(dashboard.summary.avg_dbfs) }}
-        {% else %}
-          brak danych
-        {% endif %}
-      </h2>
-      <p>
-        {% if dashboard.summary.max_dbfs is not none %}
-          Maksimum: {{ format_dbfs(dashboard.summary.max_dbfs) }}
-        {% else %}
-          Oczekiwanie na pierwszy interwał
-        {% endif %}
-      </p>
     </article>
   </section>
 
@@ -88,7 +99,7 @@
                 <a href="{{ url_for('category_events', category=row.category, period='day', date=row.started_at[:10]) }}">{{ translate_label(row.category) }}</a>
               </td>
               <td>{{ '%.1f'|format(row.duration_seconds) }} s</td>
-              <td>{{ format_dbfs(row.peak_dbfs) }}</td>
+              <td>{{ format_audio_level(row.peak_dbfs) }}</td>
               <td>{{ '%.2f'|format(row.confidence) }}</td>
             </tr>
           {% endfor %}
@@ -102,6 +113,47 @@
   <script>
     (() => {
       const chartState = new WeakMap();
+      const calibrationMode = "{{ audio_level_mode }}";
+      const calibrationSlope = Number({{ audio_calibration_slope }});
+      const calibrationOffset = Number({{ audio_calibration_offset_db }});
+
+      const calibrate = (value) => {
+        const numeric = Number(value);
+        if (Number.isNaN(numeric)) return null;
+        if (calibrationMode !== "calibrated") {
+          return numeric;
+        }
+        return numeric * calibrationSlope + calibrationOffset;
+      };
+
+      const setGauge = (root, current, min, max) => {
+        if (!root) return;
+        const range = root.querySelector(".level-gauge-range");
+        const marker = root.querySelector(".level-gauge-marker");
+        const hasValues = Number.isFinite(current) && Number.isFinite(min) && Number.isFinite(max);
+        if (!range || !marker || !hasValues) {
+          root.dataset.state = "empty";
+          if (range) range.style.left = "0%";
+          if (range) range.style.width = "0%";
+          if (marker) marker.style.left = "0%";
+          return;
+        }
+        const span = Math.max(max - min, calibrationMode === "calibrated" ? 1.0 : 0.5);
+        const pad = span * 0.18;
+        const start = min - pad;
+        const end = max + pad;
+        const normalized = (value) => Math.min(1, Math.max(0, (value - start) / Math.max(end - start, 1e-6)));
+        const left = normalized(min) * 100;
+        const right = normalized(max) * 100;
+        const currentPos = normalized(current) * 100;
+        range.style.left = `${Math.min(left, right)}%`;
+        range.style.width = `${Math.max(4, Math.abs(right - left))}%`;
+        marker.style.left = `${currentPos}%`;
+        root.dataset.state = "ready";
+        root.dataset.current = String(current);
+        root.dataset.min = String(min);
+        root.dataset.max = String(max);
+      };
 
       const initRangeEvents = () => {
         document.querySelectorAll("[data-range-events]").forEach((details) => {
@@ -177,13 +229,12 @@
         });
       };
 
-      const normalizeDb = (value, decimals = 1, offsetDb = 0) => {
-        const shifted = Number(value) + Number(offsetDb);
+      const formatDb = (value, decimals = 1) => {
+        const numeric = Number(value);
         const threshold = 0.5 * (10 ** (-decimals));
-        return Math.abs(shifted) < threshold ? 0 : shifted;
+        const normalized = Math.abs(numeric) < threshold ? 0 : numeric;
+        return `${normalized.toFixed(decimals)} ${calibrationMode === "calibrated" ? "dBA" : "dBFS"}`;
       };
-
-      const formatDb = (value, decimals = 1, offsetDb = 0) => `${normalizeDb(value, decimals, offsetDb).toFixed(decimals)} dB`;
 
       const formatTooltip = (label, value) => `${String(label)} • ${formatDb(value)}`;
 
@@ -212,10 +263,16 @@
         const padding = { top: 16, right: 72, bottom: 40, left: 12 };
         const plotWidth = width - padding.left - padding.right;
         const plotHeight = height - padding.top - padding.bottom;
-        const offsetDb = Number(canvas.dataset.offset || 100);
-        const displayValues = values.map((value) => normalizeDb(value, 1, offsetDb));
-        const minValue = normalizeDb(Number(canvas.dataset.min || Math.min(...values)), 1, offsetDb);
-        const maxValue = normalizeDb(Number(canvas.dataset.max || Math.max(...values)), 1, offsetDb);
+        const calibrate = (value) => {
+          const numeric = Number(value);
+          if (calibrationMode !== "calibrated") {
+            return numeric;
+          }
+          return numeric * calibrationSlope + calibrationOffset;
+        };
+        const displayValues = values.map((value) => calibrate(value));
+        const minValue = calibrate(Number(canvas.dataset.min || Math.min(...values)));
+        const maxValue = calibrate(Number(canvas.dataset.max || Math.max(...values)));
         const span = Math.max(maxValue - minValue, 1);
         chartState.set(canvas, {
           labels,
@@ -228,7 +285,6 @@
           plotHeight,
           width,
           height,
-          offsetDb,
         });
 
         ctx.strokeStyle = "rgba(125, 148, 192, 0.22)";
@@ -321,6 +377,50 @@
         tooltip.style.top = `${Math.max(y - 14, 8)}px`;
       };
 
+      const refreshLiveLevel = async () => {
+        const calibratedValueNode = document.querySelector("[data-live-calibrated-value]");
+        const calibratedMinNode = document.querySelector("[data-live-calibrated-min]");
+        const calibratedMaxNode = document.querySelector("[data-live-calibrated-max]");
+        const calibratedGauge = document.querySelector("[data-live-calibrated-gauge]");
+        const rawValueNode = document.querySelector("[data-live-raw-value]");
+        const rawMinNode = document.querySelector("[data-live-raw-min]");
+        const rawMaxNode = document.querySelector("[data-live-raw-max]");
+        const rawGauge = document.querySelector("[data-live-raw-gauge]");
+        if (!calibratedValueNode || !calibratedMinNode || !calibratedMaxNode || !calibratedGauge || !rawValueNode || !rawMinNode || !rawMaxNode || !rawGauge) {
+          return;
+        }
+        try {
+          const response = await fetch("/api/live-level", { cache: "no-store" });
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+          const payload = await response.json();
+          const rawCurrent = Number(payload.raw_level_dbfs);
+          const rawMin = Number(payload.raw_min_dbfs);
+          const rawMax = Number(payload.raw_max_dbfs);
+          const calCurrent = calibrate(rawCurrent);
+          const calMin = calibrate(rawMin);
+          const calMax = calibrate(rawMax);
+
+          calibratedValueNode.textContent = payload.display_level_label || "brak danych";
+          calibratedMinNode.textContent = payload.display_min_label ? `Min: ${payload.display_min_label}` : "Min: brak";
+          calibratedMaxNode.textContent = payload.display_max_label ? `Max: ${payload.display_max_label}` : "Max: brak";
+          setGauge(calibratedGauge, calCurrent, calMin, calMax);
+
+          rawValueNode.textContent = payload.raw_level_label || "brak danych";
+          rawMinNode.textContent = payload.raw_min_label ? `Min: ${payload.raw_min_label}` : "Min: brak";
+          rawMaxNode.textContent = payload.raw_max_label ? `Max: ${payload.raw_max_label}` : "Max: brak";
+          setGauge(rawGauge, rawCurrent, rawMin, rawMax);
+        } catch (_error) {
+          calibratedValueNode.textContent = "brak sygnału";
+          calibratedMinNode.textContent = "Min: brak";
+          calibratedMaxNode.textContent = "Max: brak";
+          rawValueNode.textContent = "brak sygnału";
+          rawMinNode.textContent = "Min: brak";
+          rawMaxNode.textContent = "Max: brak";
+        }
+      };
+
       const hideTooltip = (canvas) => {
         const wrap = canvas.closest(".bam-chart-wrap");
         const tooltip = wrap?.querySelector(".chart-tooltip");
@@ -340,6 +440,8 @@
       window.addEventListener("resize", renderAll);
       initRangeEvents();
       renderAll();
+      refreshLiveLevel();
+      window.setInterval(refreshLiveLevel, 5000);
     })();
   </script>
 {% endblock %}

@@ -162,13 +162,33 @@ SETTINGS_SECTIONS = (
                 ],
             },
             {
-                "name": "audio.db_offset_db",
-                "label": "Korekta dB",
+                "name": "audio.level_display_mode",
+                "label": "Skala prezentacji",
+                "kind": "radio",
+                "description": "Wybierz, czy pokazywać surowe dBFS z urządzenia, czy szacowane dBA po kalibracji.",
+                "options": [
+                    {"value": "raw", "label": "Surowe dBFS"},
+                    {"value": "calibrated", "label": "Szacowane dBA"},
+                ],
+            },
+            {
+                "name": "audio.calibration_slope",
+                "label": "Współczynnik kalibracji",
                 "kind": "range",
-                "description": "Stały offset dodawany do prezentacji. Silnik dalej pracuje na dBFS.",
-                "min": 60.0,
-                "max": 140.0,
-                "step": 0.5,
+                "description": "Skala liniowa od dBFS do dBA. Na podstawie Twoich punktów startowych jest w okolicy 2.9.",
+                "min": 0.5,
+                "max": 6.0,
+                "step": 0.01,
+                "unit": "",
+            },
+            {
+                "name": "audio.calibration_offset_db",
+                "label": "Przesunięcie kalibracji",
+                "kind": "range",
+                "description": "Stały offset używany razem ze współczynnikiem kalibracji.",
+                "min": 0.0,
+                "max": 200.0,
+                "step": 0.1,
                 "unit": "dB",
             },
             {
@@ -636,12 +656,13 @@ def create_app(
         return {
             "category_labels": CATEGORY_LABELS,
             "describe_classifier_decision": _describe_classifier_decision,
-            "format_dbfs": lambda value, decimals=1: _format_dbfs(
+            "format_audio_level": lambda value, decimals=1: _format_audio_level(
                 value,
+                cfg.audio,
                 decimals=decimals,
-                offset_db=cfg.audio.db_offset_db,
             ),
-            "db_offset_db": cfg.audio.db_offset_db,
+            "format_dbfs": _format_dbfs,
+            "audio_level_unit": _audio_level_unit(cfg.audio),
             "format_local_timestamp": _format_local_timestamp,
             "format_uptime_seconds": _format_uptime_seconds,
             "format_worker_state": _format_worker_state,
@@ -682,12 +703,14 @@ def create_app(
             range_events_url=url_for("range_events_api", period=range_state["period"], date=range_state["date"]),
             chart=chart,
             live_audio_available=live_audio_buffer is not None,
+            audio_level_mode=cfg.audio.level_display_mode,
+            audio_calibration_slope=cfg.audio.calibration_slope,
+            audio_calibration_offset_db=cfg.audio.calibration_offset_db,
         )
 
     @app.get("/api/events")
     def range_events_api():
         range_state = _resolve_range_state(request.args)
-        offset_db = current_config().audio.db_offset_db
         events = repository.list_events_range(
             category=None,
             started_at=range_state["started_at"],
@@ -703,7 +726,7 @@ def create_app(
                         "category": row["category"],
                         "category_label": _translate_label(str(row["category"])),
                         "duration_label": f"{float(row['duration_seconds']):.1f} s",
-                        "peak_label": _format_dbfs(row["peak_dbfs"], offset_db=offset_db),
+                        "peak_label": _format_audio_level(row["peak_dbfs"], current_config().audio),
                         "confidence_label": f"{float(row['confidence']):.2f}",
                         "event_url": url_for("event_details", event_id=row["id"]),
                         "category_url": url_for(
@@ -734,6 +757,15 @@ def create_app(
         updated = repository.set_event_user_label(event_id, normalized_label)
         if not updated:
             abort(404)
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.accept_mimetypes.best == "application/json":
+            return jsonify(
+                {
+                    "message": "Etykieta zapisana.",
+                    "event_id": event_id,
+                    "user_label": normalized_label,
+                    "user_label_label": _translate_label(normalized_label) if normalized_label else None,
+                }
+            )
         return redirect(url_for("event_details", event_id=event_id))
 
     @app.get("/categories/<path:category>")
@@ -775,6 +807,31 @@ def create_app(
             max_age=0,
         )
 
+    @app.get("/api/live-level")
+    def live_level():
+        if live_audio_buffer is None:
+            abort(404)
+        stats = live_audio_buffer.current_level_stats_dbfs(5.0)
+        level_dbfs = stats["level_dbfs"]
+        min_dbfs = stats["min_dbfs"]
+        max_dbfs = stats["max_dbfs"]
+        cfg = current_config()
+        return jsonify(
+            {
+                "window_seconds": 5.0,
+                "raw_level_dbfs": level_dbfs,
+                "raw_min_dbfs": min_dbfs,
+                "raw_max_dbfs": max_dbfs,
+                "raw_level_label": _format_dbfs(level_dbfs),
+                "raw_min_label": _format_dbfs(min_dbfs),
+                "raw_max_label": _format_dbfs(max_dbfs),
+                "display_level_label": _format_audio_level(level_dbfs, cfg.audio),
+                "display_min_label": _format_audio_level(min_dbfs, cfg.audio),
+                "display_max_label": _format_audio_level(max_dbfs, cfg.audio),
+                "updated_at": datetime.now().astimezone().isoformat(),
+            }
+        )
+
     @app.get("/api/live-audio-stream")
     def live_audio_stream():
         if live_audio_buffer is None:
@@ -811,6 +868,8 @@ def create_app(
             message = (
                 f"Ustawienia zapisane w {saved_path}. Część zmian zacznie działać po restarcie usługi audio-monitor."
             )
+            if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.accept_mimetypes.best == "application/json":
+                return jsonify({"message": message, "saved_path": str(saved_path)})
         return render_template(
             "settings.html",
             config=cfg,
@@ -991,14 +1050,37 @@ def _format_uptime_seconds(value: float | int | None) -> str:
     return " ".join(parts)
 
 
-def _format_dbfs(value: float | int | None, decimals: int = 1, offset_db: float = 0.0) -> str:
+def _format_dbfs(value: float | int | None, decimals: int = 1) -> str:
     if value is None:
         return "brak danych"
-    normalized = float(value) + float(offset_db)
+    normalized = float(value)
     threshold = 0.5 * (10 ** (-decimals))
     if abs(normalized) < threshold:
         normalized = 0.0
-    return f"{normalized:.{decimals}f} dB"
+    return f"{normalized:.{decimals}f} dBFS"
+
+
+def _audio_level_unit(audio: AudioConfig) -> str:
+    return "dBA" if audio.level_display_mode == "calibrated" else "dBFS"
+
+
+def _calibrate_audio_level(value: float | int | None, audio: AudioConfig) -> float | None:
+    if value is None:
+        return None
+    dbfs_value = float(value)
+    if audio.level_display_mode != "calibrated":
+        return dbfs_value
+    return dbfs_value * float(audio.calibration_slope) + float(audio.calibration_offset_db)
+
+
+def _format_audio_level(value: float | int | None, audio: AudioConfig, decimals: int = 1) -> str:
+    calibrated = _calibrate_audio_level(value, audio)
+    if calibrated is None:
+        return "brak danych"
+    threshold = 0.5 * (10 ** (-decimals))
+    if abs(calibrated) < threshold:
+        calibrated = 0.0
+    return f"{calibrated:.{decimals}f} {_audio_level_unit(audio)}"
 
 
 def _capture_device_options(config: AppConfig) -> list[dict[str, str]]:
@@ -1026,7 +1108,9 @@ def _settings_values(config: AppConfig) -> dict[str, object]:
         "audio.arecord_device": config.audio.arecord_device or "",
         "audio.sample_rate": config.audio.sample_rate,
         "audio.channels": config.audio.channels,
-        "audio.db_offset_db": config.audio.db_offset_db,
+        "audio.level_display_mode": config.audio.level_display_mode,
+        "audio.calibration_slope": config.audio.calibration_slope,
+        "audio.calibration_offset_db": config.audio.calibration_offset_db,
         "audio.frame_duration_seconds": config.audio.frame_duration_seconds,
         "audio.retry_backoff_seconds": config.audio.retry_backoff_seconds,
         "detection.initial_noise_floor_dbfs": config.detection.initial_noise_floor_dbfs,
@@ -1113,7 +1197,9 @@ def _build_config_from_form(config: AppConfig, form) -> AppConfig:
         audio=AudioConfig(
             sample_rate=_int_from_form(form, "audio.sample_rate"),
             channels=_int_from_form(form, "audio.channels"),
-            db_offset_db=_float_from_form(form, "audio.db_offset_db"),
+            level_display_mode=form.get("audio.level_display_mode", config.audio.level_display_mode),
+            calibration_slope=_float_from_form(form, "audio.calibration_slope"),
+            calibration_offset_db=_float_from_form(form, "audio.calibration_offset_db"),
             frame_duration_seconds=_float_from_form(form, "audio.frame_duration_seconds"),
             arecord_binary=config.audio.arecord_binary,
             arecord_device=arecord_device,

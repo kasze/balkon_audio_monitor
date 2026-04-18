@@ -102,6 +102,60 @@ class LiveAudioBuffer:
             return b""
         return _build_wav_bytes(samples, self.sample_rate)
 
+    def current_level_dbfs(self, seconds: float = 1.0) -> float | None:
+        stats = self.current_level_stats_dbfs(seconds)
+        return stats["level_dbfs"]
+
+    def current_level_stats_dbfs(self, seconds: float = 1.0) -> dict[str, float | None]:
+        if seconds <= 0:
+            return {"level_dbfs": None, "min_dbfs": None, "max_dbfs": None}
+        with self._lock:
+            if not self._chunks:
+                return {"level_dbfs": None, "min_dbfs": None, "max_dbfs": None}
+            selected: list[tuple[datetime, bytes, float]] = []
+            total = 0.0
+            for _sequence, started_at, chunk_bytes, duration_seconds in reversed(self._chunks):
+                selected.append((started_at, chunk_bytes, duration_seconds))
+                total += duration_seconds
+                if total >= seconds:
+                    break
+        if not selected:
+            return {"level_dbfs": None, "min_dbfs": None, "max_dbfs": None}
+
+        selected.reverse()
+        arrays: list[np.ndarray] = []
+        levels: list[float] = []
+        for _started_at, chunk_bytes, _duration_seconds in selected:
+            pcm_i16 = np.frombuffer(chunk_bytes, dtype="<i2")
+            if pcm_i16.size == 0:
+                continue
+            samples = pcm_i16.astype(np.float32) / 32768.0
+            arrays.append(samples)
+            rms = float(np.sqrt(np.mean(np.square(samples), dtype=np.float32) + 1e-12))
+            levels.append(20.0 * float(np.log10(max(rms, 1e-9))))
+
+        if not arrays:
+            return {"level_dbfs": None, "min_dbfs": None, "max_dbfs": None}
+
+        combined = np.concatenate(arrays)
+        level_dbfs = self._samples_to_dbfs(combined)
+        if level_dbfs is None:
+            return {"level_dbfs": None, "min_dbfs": None, "max_dbfs": None}
+        if not levels:
+            levels = [level_dbfs]
+        return {
+            "level_dbfs": level_dbfs,
+            "min_dbfs": min(levels),
+            "max_dbfs": max(levels),
+        }
+
+    @staticmethod
+    def _samples_to_dbfs(samples: np.ndarray) -> float | None:
+        if samples.size == 0:
+            return None
+        rms = float(np.sqrt(np.mean(np.square(samples), dtype=np.float32) + 1e-12))
+        return 20.0 * float(np.log10(max(rms, 1e-9)))
+
     def stream_wav_bytes(self, seconds: float, stop_event: Event | None = None):
         yield _build_wav_header(self.sample_rate, 1, 2, 0xFFFFFFFF)
         initial = self.snapshot_wav_bytes(seconds)

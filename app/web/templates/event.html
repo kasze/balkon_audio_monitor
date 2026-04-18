@@ -17,7 +17,7 @@
       <p><strong>Czas pełnego zdarzenia:</strong> {{ '%.1f'|format(event.duration_seconds) }} s</p>
     {% endif %}
     <p><strong>Pewność:</strong> {{ '%.2f'|format(event.confidence) }}</p>
-    <p><strong>Szczyt:</strong> {{ format_dbfs(event.peak_dbfs) }}</p>
+    <p><strong>Szczyt:</strong> {{ format_audio_level(event.peak_dbfs) }}</p>
     {% if event.user_label %}
       <p><strong>Ręczna korekta:</strong> {{ translate_label(event.user_label) }}</p>
     {% endif %}
@@ -27,6 +27,7 @@
       <p>Brak klipu audio lub klip został usunięty przez retencję.</p>
     {% endif %}
     <form method="post" action="{{ url_for('update_event_label', event_id=event.id) }}">
+      <p class="settings-banner" data-event-label-status hidden></p>
       <label for="user_label"><strong>Popraw klasyfikację</strong></label>
       <select id="user_label" name="user_label">
         <option value="">Brak ręcznej korekty</option>
@@ -138,4 +139,41 @@
       {% endif %}
     </article>
   </section>
+
+  <script>
+    (() => {
+      const form = document.querySelector('form[action="{{ url_for('update_event_label', event_id=event.id) }}"]');
+      const status = document.querySelector("[data-event-label-status]");
+      if (!form || !status) {
+        return;
+      }
+
+      const updateStatus = (text, hidden = false) => {
+        status.textContent = text;
+        status.hidden = hidden;
+      };
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        updateStatus("Zapisywanie...", false);
+        try {
+          const response = await fetch(form.action, {
+            method: "POST",
+            body: new FormData(form),
+            headers: {
+              "X-Requested-With": "XMLHttpRequest",
+              Accept: "application/json",
+            },
+          });
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+          const payload = await response.json();
+          updateStatus(payload.message || "Zapisano.", false);
+        } catch (_error) {
+          updateStatus("Nie udało się zapisać.", false);
+        }
+      });
+    })();
+  </script>
 {% endblock %}

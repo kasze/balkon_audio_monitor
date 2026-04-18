@@ -104,6 +104,40 @@ def test_manual_label_updates_event_and_category_views(tmp_path: Path) -> None:
     assert "/events/1" in category_response.get_data(as_text=True)
 
 
+def test_manual_label_ajax_save_returns_json(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "audio_monitor.sqlite3")
+    repository.initialize()
+    now = datetime.now().astimezone().replace(microsecond=0)
+
+    repository.insert_event(
+        _build_event("street_background", now),
+        ClassifierDecision("yamnet_litert", "1", "street_background", 0.7, {}),
+        None,
+    )
+
+    app = create_app(
+        repository,
+        RuntimeStatus(),
+        AppConfig(
+            base_dir=tmp_path,
+            storage=StorageConfig(database_path=repository.database_path, clip_dir=tmp_path / "clips"),
+        ),
+    )
+    client = app.test_client()
+
+    response = client.post(
+        "/events/1/label",
+        data={"user_label": "ambulance"},
+        headers={"X-Requested-With": "XMLHttpRequest", "Accept": "application/json"},
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["message"] == "Etykieta zapisana."
+    assert payload["user_label"] == "ambulance"
+    assert payload["user_label_label"] == "Karetka / syrena karetki"
+
+
 def test_manual_label_accepts_full_yamnet_label(tmp_path: Path) -> None:
     repository = SQLiteRepository(tmp_path / "audio_monitor.sqlite3")
     repository.initialize()
@@ -366,7 +400,36 @@ def test_dashboard_supports_period_navigation(tmp_path: Path) -> None:
     assert "Tydzień" in html
     assert 'class="segment-link active"' in html
     assert 'data-calendar-toggle' in html
-    assert "Live" in html
+    assert "Szacowane dBA" in html
+    assert "Surowe dBFS" in html
+
+
+def test_dashboard_shows_live_audio_level(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "audio_monitor.sqlite3")
+    repository.initialize()
+    now = datetime.now().astimezone().replace(microsecond=0)
+    buffer = LiveAudioBuffer(sample_rate=16_000, max_seconds=5.0)
+    buffer.append(now, np.full(16_000, 0.1, dtype=np.float32), 1.0)
+
+    app = create_app(
+        repository,
+        RuntimeStatus(),
+        AppConfig(
+            base_dir=tmp_path,
+            storage=StorageConfig(database_path=repository.database_path, clip_dir=tmp_path / "clips"),
+        ),
+        live_audio_buffer=buffer,
+    )
+    client = app.test_client()
+
+    response = client.get("/api/live-level")
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["display_level_label"].endswith("dBA")
+    assert payload["raw_level_label"].endswith("dBFS")
+    assert payload["display_min_label"].endswith("dBA")
+    assert payload["raw_min_label"].endswith("dBFS")
 
 
 def test_settings_page_renders_and_saves_config(tmp_path: Path) -> None:
@@ -403,7 +466,9 @@ def test_settings_page_renders_and_saves_config(tmp_path: Path) -> None:
             "audio.arecord_device": "",
             "audio.sample_rate": "16000",
             "audio.channels": "1",
-            "audio.db_offset_db": "100.0",
+            "audio.level_display_mode": "calibrated",
+            "audio.calibration_slope": "2.88",
+            "audio.calibration_offset_db": "138.3",
             "audio.frame_duration_seconds": "0.5",
             "audio.retry_backoff_seconds": "5",
             "detection.initial_noise_floor_dbfs": "-58",
@@ -445,4 +510,78 @@ def test_settings_page_renders_and_saves_config(tmp_path: Path) -> None:
     assert saved.detection.activation_margin_db == 9.0
     assert saved.detection.min_event_dbfs == -47.0
     assert saved.aggregation.max_event_seconds == 15.0
-    assert saved.audio.db_offset_db == 100.0
+    assert saved.audio.level_display_mode == "calibrated"
+    assert round(saved.audio.calibration_slope, 2) == 2.88
+    assert round(saved.audio.calibration_offset_db, 1) == 138.3
+
+
+def test_settings_page_returns_json_for_ajax_save(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "audio_monitor.sqlite3")
+    repository.initialize()
+    config_path = tmp_path / "configs" / "config.yaml"
+    app = create_app(
+        repository,
+        RuntimeStatus(),
+        AppConfig(
+            base_dir=tmp_path,
+            storage=StorageConfig(database_path=repository.database_path, clip_dir=tmp_path / "clips"),
+            classifier=ClassifierConfig(
+                yamnet_model_path=tmp_path / "models" / "yamnet.tflite",
+                yamnet_class_map_path=tmp_path / "models" / "yamnet_class_map.csv",
+            ),
+            config_path=config_path,
+        ),
+    )
+    client = app.test_client()
+
+    response = client.post(
+        "/settings",
+        data={
+            "preset": "custom",
+            "audio.arecord_device_mode": "auto",
+            "audio.arecord_device": "",
+            "audio.sample_rate": "16000",
+            "audio.channels": "1",
+            "audio.level_display_mode": "calibrated",
+            "audio.calibration_slope": "2.88",
+            "audio.calibration_offset_db": "138.3",
+            "audio.frame_duration_seconds": "0.5",
+            "audio.retry_backoff_seconds": "5",
+            "detection.initial_noise_floor_dbfs": "-58",
+            "detection.activation_margin_db": "11",
+            "detection.release_margin_db": "4",
+            "detection.min_event_dbfs": "-44",
+            "detection.min_active_frames": "3",
+            "detection.max_inactive_frames": "2",
+            "detection.noise_floor_alpha": "0.04",
+            "aggregation.noise_interval_seconds": "5",
+            "aggregation.pre_roll_seconds": "1.0",
+            "aggregation.post_roll_seconds": "0.5",
+            "aggregation.min_event_seconds": "1.0",
+            "aggregation.focus_clip_seconds": "8.0",
+            "aggregation.max_clip_seconds": "30.0",
+            "aggregation.max_event_seconds": "25.0",
+            "classifier.backend": "yamnet",
+            "classifier.yamnet_num_threads": "1",
+            "classifier.yamnet_max_analysis_seconds": "12.0",
+            "classifier.yamnet_max_windows": "24",
+            "classifier.yamnet_min_category_score": "0.08",
+            "classifier.yamnet_top_k": "8",
+            "storage.keep_clips": "true",
+            "storage.clip_max_megabytes": "512",
+            "storage.clip_max_age_days": "10",
+            "storage.min_free_disk_megabytes": "256",
+            "storage.database_path": str(repository.database_path),
+            "storage.clip_dir": str(tmp_path / "clips"),
+            "web.host": "0.0.0.0",
+            "web.port": "8080",
+            "web.recent_events_limit": "25",
+            "web.dashboard_history_hours": "24",
+            "logging.level": "INFO",
+        },
+        headers={"X-Requested-With": "XMLHttpRequest", "Accept": "application/json"},
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert "Ustawienia zapisane" in payload["message"]
