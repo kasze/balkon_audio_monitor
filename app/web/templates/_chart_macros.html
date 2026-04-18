@@ -7,6 +7,7 @@
           class="chart bam-chart"
           data-labels='{{ chart["labels"]|tojson }}'
           data-values='{{ chart["values"]|tojson }}'
+          data-counts='{{ chart["counts"]|default([])|tojson }}'
           data-min='{{ chart["min_value"] }}'
           data-max='{{ chart["max_value"] }}'
           data-calibration-mode='{{ audio_level_mode }}'

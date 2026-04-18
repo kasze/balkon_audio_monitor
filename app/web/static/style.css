@@ -300,6 +300,7 @@ main {
 }
 
 .range-card {
+  padding: 18px 20px;
   margin-bottom: 0;
   overflow: visible;
   z-index: 20;
@@ -310,14 +311,16 @@ main {
   justify-content: space-between;
   align-items: flex-start;
   gap: 16px;
-  margin-bottom: 16px;
+  margin-bottom: 10px;
 }
 
 .range-header h2 {
-  margin-bottom: 6px;
+  margin-bottom: 2px;
+  font-size: 1.45rem;
+  line-height: 1.05;
 }
 
-.range-header p:last-child {
+.range-header p {
   margin: 0;
   color: var(--muted);
 }
@@ -336,8 +339,8 @@ main {
 }
 
 .range-arrow {
-  width: 42px;
-  height: 42px;
+  width: 38px;
+  height: 38px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -352,7 +355,7 @@ main {
 .range-toolbar {
   display: flex;
   flex-wrap: wrap;
-  gap: 14px;
+  gap: 10px;
   align-items: center;
   margin-top: 0;
 }
@@ -360,17 +363,17 @@ main {
 .segmented-control {
   display: inline-grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-  padding: 6px;
-  border-radius: 22px;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 18px;
   background: rgba(255, 255, 255, 0.24);
   border: 1px solid rgba(255, 255, 255, 0.26);
 }
 
 .segment-link {
   display: block;
-  padding: 10px 14px;
-  border-radius: 16px;
+  padding: 8px 12px;
+  border-radius: 14px;
   text-align: center;
   color: rgba(44, 57, 88, 0.78);
   transition: background 140ms ease, color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
@@ -434,7 +437,7 @@ main {
   min-width: 172px;
   display: grid;
   gap: 2px;
-  padding: 10px 14px;
+  padding: 8px 12px;
   text-align: left;
   color: rgba(23, 39, 73, 0.92);
   background:
@@ -460,7 +463,7 @@ main {
   align-items: center;
   justify-content: center;
   min-height: 48px;
-  padding: 0 14px;
+  padding: 0 12px;
   color: rgba(44, 57, 88, 0.8);
   background: rgba(255, 255, 255, 0.32);
   border: 1px solid rgba(255, 255, 255, 0.28);
@@ -703,6 +706,12 @@ main {
   margin: 0;
 }
 
+.plain-list-two-col {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 18px;
+}
+
 .plain-list li {
   display: flex;
   justify-content: space-between;
@@ -723,6 +732,12 @@ main {
 .plain-list strong {
   font-weight: 700;
   letter-spacing: -0.02em;
+}
+
+@media (max-width: 720px) {
+  .plain-list-two-col {
+    grid-template-columns: 1fr;
+  }
 }
 
 .events-table {

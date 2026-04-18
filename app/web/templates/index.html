@@ -5,7 +5,7 @@
 {% block content %}
   {{ render_range_controls('index', range_state) }}
 
-  <section class="grid three">
+  <section class="grid two">
     <article class="card metric">
       <p class="label">Szacowane dBA</p>
       <h2 data-live-calibrated-value>brak danych</h2>
@@ -34,11 +34,6 @@
         </div>
       </div>
     </article>
-    <article class="card metric">
-      <p class="label">{{ range_state.period_label }}</p>
-      <h2>{{ range_state.title }}</h2>
-      <p>Zdarzenia w zakresie: {{ dashboard.summary.event_count }}</p>
-    </article>
   </section>
 
   {{ render_chart_card("Wykres hałasu", chart, "Wykres hałasu dla wybranego zakresu", "Brak danych dla wybranego zakresu.") }}
@@ -47,7 +42,7 @@
     <article class="card">
       <h3>Zdarzenia wg kategorii</h3>
       {% if dashboard.categories %}
-        <ul class="plain-list">
+        <ul class="plain-list plain-list-two-col">
           {% for row in dashboard.categories %}
             <li>
               <span><a href="{{ url_for('category_events', category=row.category, period=range_state.period, date=range_state.date) }}">{{ translate_label(row.category) }}</a></span>
@@ -244,6 +239,7 @@
       const drawChart = (canvas) => {
         const labels = JSON.parse(canvas.dataset.labels || "[]");
         const values = JSON.parse(canvas.dataset.values || "[]");
+        const counts = JSON.parse(canvas.dataset.counts || "[]");
         if (!labels.length || !values.length) {
           return;
         }
@@ -296,6 +292,24 @@
           ctx.lineTo(width - padding.right, y);
           ctx.stroke();
         }
+
+        const maxCount = Math.max(1, ...counts.map((value) => Number(value) || 0));
+        const barBase = height - padding.bottom;
+        const barMaxHeight = Math.max(18, plotHeight * 0.32);
+        const barWidth = Math.max(4, plotWidth / Math.max(values.length * 1.8, 6));
+        counts.forEach((count, index) => {
+          const numericCount = Number(count) || 0;
+          if (numericCount <= 0) {
+            return;
+          }
+          const x = positionForIndex(index, values.length, plotWidth, padding.left);
+          const barHeight = (numericCount / maxCount) * barMaxHeight;
+          const top = barBase - barHeight;
+          ctx.fillStyle = "rgba(63, 130, 255, 0.12)";
+          ctx.fillRect(x - barWidth / 2, top, barWidth, barHeight);
+          ctx.fillStyle = "rgba(126, 203, 255, 0.16)";
+          ctx.fillRect(x - barWidth / 2 + 1, top + 1, Math.max(1, barWidth - 2), Math.max(0, barHeight - 2));
+        });
 
         const gradient = ctx.createLinearGradient(padding.left, padding.top, width - padding.right, padding.top + plotHeight);
         gradient.addColorStop(0, "rgba(126, 203, 255, 0.95)");

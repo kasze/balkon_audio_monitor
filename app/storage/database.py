@@ -327,6 +327,8 @@ class SQLiteRepository:
                 (started_at, ended_at),
             ).fetchall()
             bucket_rows = self._fetch_noise_buckets(connection, started_at, ended_at, bucket_mode)
+            event_counts = self._fetch_event_buckets(connection, started_at, ended_at, bucket_mode)
+            bucket_rows = self._merge_bucket_counts(bucket_rows, event_counts)
             recent = connection.execute(
                 """
                 SELECT
@@ -483,7 +485,8 @@ class SQLiteRepository:
                 AS bucket_start,
                 AVG(avg_dbfs) AS avg_dbfs,
                 MAX(max_dbfs) AS max_dbfs,
-                COUNT(*) AS interval_count
+                COUNT(*) AS interval_count,
+                COUNT(*) AS event_count
             FROM noise_intervals
             WHERE started_at >= ? AND started_at < ?
             GROUP BY bucket_start
@@ -491,6 +494,96 @@ class SQLiteRepository:
             """,
             (started_at, ended_at),
         ).fetchall()
+
+    def _fetch_event_buckets(
+        self,
+        connection: sqlite3.Connection,
+        started_at: str,
+        ended_at: str,
+        bucket_mode: str,
+    ) -> dict[str, int]:
+        if bucket_mode == "hour":
+            rows = connection.execute(
+                """
+                SELECT bucket_start, COUNT(*) AS event_count
+                FROM (
+                    SELECT substr(started_at, 1, 13) || ':00:00' AS bucket_start
+                    FROM events
+                    WHERE started_at >= ? AND started_at < ?
+                )
+                GROUP BY bucket_start
+                """,
+                (started_at[:13] + ":00:00", ended_at[:13] + ":00:00"),
+            ).fetchall()
+            return {str(row["bucket_start"]): int(row["event_count"]) for row in rows}
+        if bucket_mode == "six_hour":
+            rows = connection.execute(
+                """
+                SELECT
+                    substr(started_at, 1, 10) || ' '
+                    || printf('%02d', (CAST(substr(started_at, 12, 2) AS INTEGER) / 6) * 6)
+                    || ':00:00' AS bucket_start,
+                    COUNT(*) AS event_count
+                FROM events
+                WHERE started_at >= ? AND started_at < ?
+                GROUP BY substr(started_at, 1, 10), (CAST(substr(started_at, 12, 2) AS INTEGER) / 6)
+                ORDER BY bucket_start ASC
+                """,
+                (started_at[:13] + ":00:00", ended_at[:13] + ":00:00"),
+            ).fetchall()
+            return {str(row["bucket_start"]): int(row["event_count"]) for row in rows}
+        if bucket_mode == "day":
+            rows = connection.execute(
+                """
+                SELECT substr(started_at, 1, 10) || ' 00:00:00' AS bucket_start, COUNT(*) AS event_count
+                FROM events
+                WHERE started_at >= ? AND started_at < ?
+                GROUP BY substr(started_at, 1, 10)
+                ORDER BY bucket_start ASC
+                """,
+                (started_at[:10], ended_at[:10]),
+            ).fetchall()
+            return {str(row["bucket_start"]): int(row["event_count"]) for row in rows}
+        if bucket_mode == "month":
+            rows = connection.execute(
+                """
+                SELECT substr(started_at, 1, 7) || '-01 00:00:00' AS bucket_start, COUNT(*) AS event_count
+                FROM events
+                WHERE started_at >= ? AND started_at < ?
+                GROUP BY substr(started_at, 1, 7)
+                ORDER BY bucket_start ASC
+                """,
+                (started_at[:10], ended_at[:10]),
+            ).fetchall()
+            return {str(row["bucket_start"]): int(row["event_count"]) for row in rows}
+        rows = connection.execute(
+            """
+            SELECT
+                """
+            + _bucket_expression(bucket_mode)
+            + """
+                AS bucket_start,
+                COUNT(*) AS event_count
+            FROM events
+            WHERE started_at >= ? AND started_at < ?
+            GROUP BY bucket_start
+            ORDER BY bucket_start ASC
+            """,
+            (started_at, ended_at),
+        ).fetchall()
+        return {str(row["bucket_start"]): int(row["event_count"]) for row in rows}
+
+    @staticmethod
+    def _merge_bucket_counts(
+        bucket_rows: list[sqlite3.Row],
+        event_counts: dict[str, int],
+    ) -> list[sqlite3.Row]:
+        merged: list[sqlite3.Row] = []
+        for row in bucket_rows:
+            row_dict = dict(row)
+            row_dict["event_count"] = int(event_counts.get(str(row_dict["bucket_start"]), row_dict.get("event_count", 0) or 0))
+            merged.append(row_dict)
+        return merged
 
     def list_events(
         self,

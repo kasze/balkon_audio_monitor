@@ -914,6 +914,7 @@ def _build_chart(
         return None
     labels = [_format_chart_bucket_label(str(row["bucket_start"]), period) for row in rows]
     values = [float(row["avg_dbfs"]) for row in rows]
+    counts = [int(row.get("event_count", 0) or 0) for row in rows]
     min_value = min(values)
     max_value = max(values)
     if max_value - min_value < 1.0:
@@ -923,6 +924,7 @@ def _build_chart(
     return {
         "labels": labels,
         "values": [round(value, 3) for value in values],
+        "counts": counts,
         "min_value": round(min_value, 1),
         "max_value": round(max_value, 1),
     }
